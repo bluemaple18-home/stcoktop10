@@ -1,0 +1,162 @@
+# TW Top10 選股系統
+
+## 專案簡介
+
+這是一個針對台灣股市的自動化選股系統，透過技術指標分析與機器學習模型，每日篩選出最具潛力的前 10 支股票。
+
+## 專案結構
+
+```
+tw-top10/
+├── data/              # 資料目錄
+│   ├── raw/          # 原始資料
+│   └── clean/        # 清理後的資料
+├── models/           # 訓練好的模型檔案
+├── artifacts/        # 產出物（圖表、報告等）
+├── app/              # 應用程式
+│   ├── daily.py     # 每日選股腳本
+│   └── ui.py        # Streamlit UI 介面
+├── skills/           # 自訂技能與工具
+├── requirements.txt  # Python 套件相依
+├── .env.sample      # 環境變數範本
+└── README.md        # 專案說明文件
+```
+
+## 安裝步驟
+
+### 1. 建立虛擬環境（使用 uv）
+
+```bash
+# 安裝 uv（如果尚未安裝）
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 建立虛擬環境
+uv venv
+
+# 啟動虛擬環境
+source .venv/bin/activate  # macOS/Linux
+```
+
+### 2. 安裝相依套件
+
+```bash
+uv pip install -r requirements.txt
+```
+
+### 3. 設定環境變數
+
+```bash
+cp .env.sample .env
+# 編輯 .env 填入實際設定值
+```
+
+## 使用方式
+
+### Agent A：盤後資料整備
+
+#### 快速測試（7 天資料）
+
+```bash
+python test_agent_a.py
+```
+
+#### 完整 ETL 流程（3 年資料）
+
+```bash
+# 執行完整 ETL 流程
+python app/etl_pipeline.py
+
+# 指定日期範圍
+python app/etl_pipeline.py --start-date 2023-01-01 --end-date 2026-01-20
+
+# 僅執行驗收測試
+python app/etl_pipeline.py --validate
+```
+
+**產出檔案**：
+- `data/clean/features.parquet`：完整特徵資料（所有股票 × 所有指標）
+- `data/clean/universe.parquet`：經風險過濾後的股票池
+- `artifacts/etl_report.md`：ETL 執行報告
+- `artifacts/signals_preview.png`：訊號預覽圖
+
+> [!NOTE]
+> 首次執行會需要約 30-60 分鐘（需下載近 3 年資料），請耐心等待。
+> API 請求間隔預設 3 秒，避免被 TWSE/TPEX 封鎖。
+
+### 每日選股（開發中）
+
+```bash
+python app/daily.py
+```
+
+### 啟動 Web UI（開發中）
+
+```bash
+streamlit run app/ui.py
+```
+
+## 核心功能
+
+### Agent A｜盤後資料整備系統
+
+完整的台股盤後資料處理系統，整合技術指標、量能分析與基本面訊號：
+
+- **資料擷取**：從 TWSE（上市）、TPEX（上櫃）自動下載近 3 年日行情
+  - Yahoo Finance 備援機制
+  - 自動容錯與資料來源記錄
+  - 處置股與全額交割股清單
+  
+- **技術指標計算**：
+  - 趨勢指標：MA5/10/20/60、EMA12/26
+  - 動量指標：RSI、MACD、KD
+  - 波動指標：布林通道
+  - 前高突破旗標
+
+- **量能分析**：
+  - 平均成交量與量比（5/10/20 日）
+  - OBV（能量潮指標）
+  - 近 20 日日均成交值
+
+- **基本面整合**：
+  - 月營收 YoY/MoM
+  - 近四季 EPS、ROE、毛利率
+  - 殖利率
+
+- **風險過濾機制**：
+  - 剔除處置股、全額交割股
+  - 上市滿 60 日
+  - 近 20 日日均成交值 ≥ 1000 萬
+  - 股價 ≥ 10 元
+
+- **自動化報告**：
+  - ETL 執行報告（缺值率、資料來源統計）
+  - 訊號預覽圖（K 線 + 技術指標 + 成交量）
+
+### 選股系統（開發中）
+
+- **機器學習模型**：使用 LightGBM/XGBoost 預測股價走勢
+- **自動選股**：根據模型預測與技術指標篩選前 10 支股票
+- **視覺化介面**：透過 Streamlit 呈現選股結果與分析圖表
+
+## 技術棧
+
+- **資料處理**：pandas, numpy, pyarrow, duckdb
+- **技術分析**：ta (Technical Analysis Library)
+- **機器學習**：scikit-learn, lightgbm, xgboost
+- **視覺化**：matplotlib, streamlit
+- **資料擷取**：requests
+
+## 開發規範
+
+- 使用 `uv` 管理 Python 環境，避免污染系統環境
+- 所有程式碼註解與文件使用繁體中文
+- Git commit messages 使用繁體中文台灣用語
+
+## 授權
+
+本專案僅供個人學習與研究使用。
+
+## 注意事項
+
+> [!WARNING]
+> 本系統產生的選股結果僅供參考，不構成投資建議。投資有風險，請謹慎評估。

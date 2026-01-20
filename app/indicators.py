@@ -1,0 +1,296 @@
+"""
+技術指標計算模組 (向量化優化版)
+使用 Pandas 向量化運算取代迴圈，大幅提升計算效能
+"""
+
+import pandas as pd
+import numpy as np
+import logging
+from typing import Optional
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+
+class TechnicalIndicators:
+    """技術指標計算器 (向量化版本)"""
+    
+    def __init__(self, df: pd.DataFrame):
+        """
+        初始化技術指標計算器
+        
+        Args:
+            df: 必須包含 date, stock_id, open, high, low, close, volume 欄位
+        """
+        self.df = df.copy()
+        # 確保資料型態正確
+        self.df['date'] = pd.to_datetime(self.df['date'])
+        self.df = self.df.sort_values(['date', 'stock_id'])
+        
+        # 準備寬表格 (Wide Format) 用於向量化計算
+        # Index: Date, Columns: StockID
+        logger.info("準備向量化資料結構...")
+        self.pivots = {}
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            if col in self.df.columns:
+                self.pivots[col] = self.df.pivot(index='date', columns='stock_id', values=col)
+
+    def _merge_indicator(self, indicator_df: pd.DataFrame, name: str):
+        """
+        將計算好的寬表格指標合併回原始長表格
+        
+        Args:
+            indicator_df: 寬表格指標 (Index: Date, Columns: StockID)
+            name: 指標名稱
+        """
+        # Melt 回長表格
+        melted = indicator_df.melt(ignore_index=False, var_name='stock_id', value_name=name).reset_index()
+        
+        # 合併回 self.df
+        # 注意: 這裡假設 self.df 與 melted 的 keys (date, stock_id) 是完全對齊的
+        # 為了效能，我們使用 set_index 後的賦值，避免昂貴的 merge
+        if 'date' in self.df.columns and 'stock_id' in self.df.columns:
+            self.df = self.df.set_index(['date', 'stock_id'])
+            melted = melted.set_index(['date', 'stock_id'])
+            self.df[name] = melted[name]
+            self.df = self.df.reset_index()
+        else:
+            # Fallback
+            self.df = self.df.merge(melted, on=['date', 'stock_id'], how='left')
+
+    def calculate_ma(self, periods: list = [5, 10, 20, 60]) -> pd.DataFrame:
+        """計算移動平均線 (MA) - 向量化"""
+        logger.info(f"計算移動平均線 (Vectorized): {periods}")
+        
+        close = self.pivots['close']
+        
+        for period in periods:
+            # 直接對整個寬表格做 rolling mean
+            ma = close.rolling(window=period).mean()
+            self._merge_indicator(ma, f'ma{period}')
+            
+        return self.df
+    
+    def calculate_ema(self, periods: list = [12, 26]) -> pd.DataFrame:
+        """計算指數移動平均線 (EMA) - 向量化"""
+        logger.info(f"計算指數移動平均線 (Vectorized): {periods}")
+        
+        close = self.pivots['close']
+        
+        for period in periods:
+            ema = close.ewm(span=period, adjust=False).mean()
+            self._merge_indicator(ema, f'ema{period}')
+            
+        return self.df
+    
+    def calculate_macd(self, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
+        """計算 MACD 指標 - 向量化"""
+        logger.info("計算 MACD 指標 (Vectorized)")
+        
+        close = self.pivots['close']
+        
+        ema_fast = close.ewm(span=fast, adjust=False).mean()
+        ema_slow = close.ewm(span=slow, adjust=False).mean()
+        
+        dif = ema_fast - ema_slow
+        dem = dif.ewm(span=signal, adjust=False).mean()
+        osc = dif - dem
+        
+        self._merge_indicator(dif, 'macd')
+        self._merge_indicator(dem, 'macd_signal')
+        self._merge_indicator(osc, 'macd_hist')
+        
+        return self.df
+    
+    def calculate_rsi(self, period: int = 14) -> pd.DataFrame:
+        """計算 RSI 指標 (Wilder's Smoothing) - 向量化"""
+        logger.info(f"計算 RSI 指標 (Vectorized, 週期={period})")
+        
+        close = self.pivots['close']
+        delta = close.diff()
+        
+        # 分離漲跌
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
+        
+        # Wilder's Smoothing
+        # First value is SMA, subsequent are (prev * (n-1) + curr) / n
+        # This is equivalent to ewm(alpha=1/n, adjust=False)
+        avg_gain = gain.ewm(alpha=1/period, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1/period, adjust=False).mean()
+        
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+        
+        self._merge_indicator(rsi, 'rsi')
+        
+        return self.df
+    
+    def calculate_kd(self, k_period: int = 9, d_period: int = 3, smooth_k: int = 3) -> pd.DataFrame:
+        """計算 KD 指標 - 向量化"""
+        logger.info("計算 KD 指標 (Vectorized)")
+        
+        close = self.pivots['close']
+        high = self.pivots['high']
+        low = self.pivots['low']
+        
+        # RSV
+        low_min = low.rolling(window=k_period).min()
+        high_max = high.rolling(window=k_period).max()
+        rsv = 100 * (close - low_min) / (high_max - low_min)
+        
+        # K = 2/3 * Prev_K + 1/3 * RSV
+        # This is equivalent to EMA with alpha=1/3 (or span=5) if we enable adjust=False
+        # However, standard KD uses SMA for initial or specific recursive formula
+        # Pandas ewm is close enough. Standard definition:
+        # K = RSV.ewm(com=2).mean() # com=2 means alpha=1/(2+1)=1/3
+        k = rsv.ewm(alpha=1/3, adjust=False).mean()
+        d = k.ewm(alpha=1/3, adjust=False).mean()
+        
+        self._merge_indicator(k, 'k')
+        self._merge_indicator(d, 'd')
+        
+        return self.df
+    
+    def calculate_bollinger_bands(self, period: int = 20, std_dev: float = 2.0) -> pd.DataFrame:
+        """計算布林通道 - 向量化"""
+        logger.info(f"計算布林通道 (Vectorized, 週期={period})")
+        
+        close = self.pivots['close']
+        
+        ma = close.rolling(window=period).mean()
+        std = close.rolling(window=period).std()
+        
+        upper = ma + (std * std_dev)
+        lower = ma - (std * std_dev)
+        width = (upper - lower) / ma
+        
+        self._merge_indicator(upper, 'bb_upper')
+        self._merge_indicator(ma, 'bb_middle')
+        self._merge_indicator(lower, 'bb_lower')
+        self._merge_indicator(width, 'bb_width')
+        
+        return self.df
+    
+    def calculate_breakout_flag(self, lookback_period: int = 60) -> pd.DataFrame:
+        """計算前高突破旗標 - 向量化"""
+        logger.info(f"計算前高突破旗標 (Vectorized, 回溯={lookback_period})")
+        
+        close = self.pivots['close']
+        high = self.pivots['high']
+        
+        # 過去 N 日最高價 (不含今日) -> shift(1)
+        rolling_max = high.shift(1).rolling(window=lookback_period).max()
+        
+        breakout = (close > rolling_max).astype(int)
+        
+        self._merge_indicator(breakout, 'breakout_flag')
+        
+        return self.df
+        
+    def calculate_volume_spike(self, ma_period: int = 20, multiplier: float = 2.0) -> pd.DataFrame:
+        """計算量能突增 - 向量化"""
+        logger.info("計算量能突增 (Vectorized)")
+        
+        volume = self.pivots['volume']
+        vol_ma = volume.rolling(window=ma_period).mean()
+        
+        spike = (volume > (vol_ma * multiplier)).astype(int)
+        
+        self._merge_indicator(spike, 'volume_spike')
+        return self.df
+
+    def calculate_revenue_factors(self) -> pd.DataFrame:
+        """
+        計算基礎基本面因子 (需有 'close' 與 'revenue' 資料)
+        暫時使用 'close' 模擬展示 (因目前資料源尚未整合營收至此 DataFrame)
+        
+        TODO: 當資料源整合後，此處應使用 self.pivots['revenue']
+        目前僅實作架構供未來擴充
+        """
+        # 檢查是否有營收資料
+        if 'revenue' not in self.pivots:
+            # 嘗試從 columns 找
+            if 'revenue' in self.df.columns:
+                 self.pivots['revenue'] = self.df.pivot(index='date', columns='stock_id', values='revenue')
+            else:
+                logger.warning("無營收資料，跳過基本面因子計算")
+                return self.df
+                
+        logger.info("計算基本面因子 (Vectorized)")
+        revenue = self.pivots['revenue']
+        
+        # 營收動能: 近 3 月平均營收 / 近 12 月最大營收
+        rev_ma3 = revenue.rolling(window=3).mean()
+        rev_max12 = revenue.rolling(window=12).max()
+        
+        rev_momentum = rev_ma3 / rev_max12
+        
+        self._merge_indicator(rev_momentum, 'revenue_momentum')
+        return self.df
+
+    def calculate_all_indicators(self) -> pd.DataFrame:
+        """一次計算所有技術指標"""
+        logger.info("開始計算所有技術指標 (Vectorized)...")
+        
+        self.calculate_ma()
+        self.calculate_ema()
+        self.calculate_macd()
+        self.calculate_rsi()
+        self.calculate_kd()
+        self.calculate_bollinger_bands()
+        self.calculate_breakout_flag()
+        self.calculate_volume_spike()
+        self.calculate_revenue_factors() # 新增基本面因子
+        
+        logger.info("所有技術指標計算完成！")
+        return self.df
+
+    def get_missing_rate(self) -> pd.Series:
+        """計算各欄位缺值率"""
+        missing_rate = (self.df.isnull().sum() / len(self.df) * 100).round(2)
+        return missing_rate.sort_values(ascending=False)
+
+
+if __name__ == "__main__":
+    # 測試程式碼
+    import time
+    from pathlib import Path
+    
+    print("生成測試資料...")
+    # 建立一個假的測試資料集: 100 檔股票, 500 天
+    dates = pd.date_range(end=pd.Timestamp.now(), periods=500, freq='B')
+    stock_ids = [f"{i:04d}" for i in range(1101, 1201)] # 100 檔
+    
+    data = []
+    for sid in stock_ids:
+        # Random walk prices
+        base_price = 100
+        closes = base_price * (1 + np.random.randn(500) * 0.02).cumprod()
+        opens = closes * (1 + np.random.randn(500) * 0.01)
+        highs = np.maximum(opens, closes) * (1 + abs(np.random.randn(500) * 0.01))
+        lows = np.minimum(opens, closes) * (1 - abs(np.random.randn(500) * 0.01))
+        volumes = np.random.randint(100, 5000, 500) * 1000
+        
+        df_stock = pd.DataFrame({
+            'date': dates,
+            'stock_id': sid,
+            'open': opens,
+            'high': highs,
+            'low': lows,
+            'close': closes,
+            'volume': volumes
+        })
+        data.append(df_stock)
+        
+    full_df = pd.concat(data)
+    print(f"測試資料規模: {len(full_df)} 筆 (100 檔 x 500 天)")
+    
+    start_time = time.time()
+    ti = TechnicalIndicators(full_df)
+    result = ti.calculate_all_indicators()
+    end_time = time.time()
+    
+    print(f"\n計算耗時: {end_time - start_time:.4f} 秒")
+    print(f"結果欄位: {list(result.columns)}")
+    print(result.tail())
