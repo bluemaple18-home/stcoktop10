@@ -1,0 +1,34 @@
+# CODEOWNERS - 檔案所有權定義
+# 用於 GitHub PR 審核和協作規範
+# 格式: <路徑模式> @<擁有者>
+
+# ============================================================
+# 主電腦專屬區 (UI/UX)
+# ============================================================
+app/ui.py                     @bluemaple18-home
+app/reason_generator.py       @bluemaple18-home
+app/glossary.py               @bluemaple18-home
+app/dashboard_renderer.py     @bluemaple18-home
+static/                       @bluemaple18-home
+templates/                    @bluemaple18-home
+
+# ============================================================
+# Mini 專屬區 (ML/演算法)
+# ============================================================
+app/indicators.py             @bluemaple18-home
+app/agent_b_modeling.py       @bluemaple18-home
+app/agent_b_ranking.py        @bluemaple18-home
+app/fundamental_data.py       @bluemaple18-home
+app/event_detector.py         @bluemaple18-home
+app/risk_filter.py            @bluemaple18-home
+app/volume_indicators.py      @bluemaple18-home
+models/                       @bluemaple18-home
+run_agent_b.py                @bluemaple18-home
+
+# ============================================================
+# 共用區 (主電腦主導)
+# ============================================================
+app/etl_pipeline.py           @bluemaple18-home
+app/data_fetcher.py           @bluemaple18-home
+app/publish_daily.py          @bluemaple18-home
+requirements.txt              @bluemaple18-home

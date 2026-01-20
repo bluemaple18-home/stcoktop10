@@ -120,6 +120,78 @@ class FundamentalData:
         logger.info("虛擬基本面資料建立完成")
         return self.df
     
+    def fetch_revenue_data(self, stock_ids: list = None, months: int = 12) -> pd.DataFrame:
+        """
+        抓取真實月營收資料（使用台灣證交所 OpenAPI）
+        
+        Args:
+            stock_ids: 股票代號列表（若為 None 則使用 self.df 中的所有股票）
+            months: 回溯月數
+            
+        Returns:
+            包含 stock_id, year, month, revenue_yoy, revenue_mom 的 DataFrame
+        """
+        import requests
+        from datetime import datetime, timedelta
+        import time
+        
+        logger.info(f"開始抓取月營收資料（回溯 {months} 個月）")
+        
+        if stock_ids is None:
+            stock_ids = self.df['stock_id'].unique().tolist()
+        
+        # 使用證交所 OpenAPI
+        api_url = "https://openapi.twse.com.tw/v1/opendata/t187ap05_P"
+        
+        try:
+            logger.info("從證交所 OpenAPI 下載營收資料...")
+            response = requests.get(api_url, timeout=30)
+            response.raise_for_status()
+            
+            data_json = response.json()
+            df_all = pd.DataFrame(data_json)
+            
+            if df_all.empty:
+                logger.warning("API 回傳空資料")
+                return pd.DataFrame()
+            
+            # 欄位對應（根據實際 API 回傳格式調整）
+            # 假設API回傳欄位: '公司代號', '資料年月', '去年同期增減(%)', '上月比較增減(%)'
+            df_all['stock_id'] = df_all['公司代號'].astype(str).str.strip()
+            
+            # 解析年月 (通常格式: '11301' -> 2024年1月)
+            df_all['年月'] = df_all['資料年月'].astype(str)
+            df_all['year'] = (df_all['年月'].str[:3].astype(int) + 1911)
+            df_all['month'] = df_all['年月'].str[3:5].astype(int)
+            
+            # 清理營收成長率數值
+            df_all['revenue_yoy'] = pd.to_numeric(df_all['去年同期增減(%)'].replace('-', np.nan), errors='coerce')
+            df_all['revenue_mom'] = pd.to_numeric(df_all['上月比較增減(%)'].replace('-', np.nan), errors='coerce')
+            
+            # 篩選需要的股票與月份
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=30 * months)
+            
+            mask = (
+                (df_all['stock_id'].isin(stock_ids)) &
+                (df_all['year'] >= start_date.year) &
+                (df_all['year'] <= end_date.year)
+            )
+            
+            result = df_all[mask][['stock_id', 'year', 'month', 'revenue_yoy', 'revenue_mom']].copy()
+            
+            logger.info(f"月營收資料抓取完成，共 {len(result)} 筆")
+            return result
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"API 請求失敗: {e}")
+            logger.warning("將使用虛擬營收資料")
+            return pd.DataFrame()
+        except Exception as e:
+            logger.error(f"資料解析失敗: {e}")
+            logger.warning("將使用虛擬營收資料")
+            return pd.DataFrame()
+    
     def get_data(self) -> pd.DataFrame:
         """取得處理後的資料"""
         return self.df

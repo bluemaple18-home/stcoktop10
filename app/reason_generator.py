@@ -184,6 +184,51 @@ def generate_reasons_structured(row: pd.Series, hist_df: pd.DataFrame = None) ->
                      "signal": f"{signal:.2f}"
                  }
              })
+    
+    # ===== 營收動能 (Revenue Momentum) =====
+    
+    revenue_yoy = row.get('revenue_yoy')
+    revenue_mom = row.get('revenue_mom')
+    
+    if revenue_yoy is not None and not np.isnan(revenue_yoy):
+        # 爆發式成長
+        if revenue_yoy > 100:
+            reasons.append({
+                "type": TYPE_POSITIVE,
+                "text": "營收爆發式成長",
+                "metadata": {
+                    "revenue_yoy": f"{revenue_yoy:.1f}%",
+                    "note": "年增率超過 100%"
+                }
+            })
+        # 強勁成長
+        elif revenue_yoy > 50:
+            reasons.append({
+                "type": TYPE_POSITIVE,
+                "text": "營收連三月成長",
+                "metadata": {
+                    "revenue_yoy": f"{revenue_yoy:.1f}%",
+                    "revenue_mom": f"{revenue_mom:.1f}%" if revenue_mom and not np.isnan(revenue_mom) else "N/A"
+                }
+            })
+        # 穩健成長
+        elif revenue_yoy > 20:
+            reasons.append({
+                "type": TYPE_POSITIVE,
+                "text": "營收穩健成長",
+                "metadata": {
+                    "revenue_yoy": f"{revenue_yoy:.1f}%"
+                }
+            })
+        # 營收衰退警示
+        elif revenue_yoy < -20:
+            reasons.append({
+                "type": TYPE_CAUTION,
+                "text": "⚠ 營收大幅衰退",
+                "metadata": {
+                    "revenue_yoy": f"{revenue_yoy:.1f}%"
+                }
+            })
 
     # 確保每個理由都有 metadata
     for r in reasons:

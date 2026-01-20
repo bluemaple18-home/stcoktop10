@@ -112,7 +112,7 @@ class LightGBMTrainer:
             X, y, feature_names
         """
         if exclude_cols is None:
-            exclude_cols = ['symbol', 'date', 'target']
+            exclude_cols = ['symbol', 'stock_id', 'date', 'target', 'stock_name']
         
         # 分離標籤
         y = df['target']

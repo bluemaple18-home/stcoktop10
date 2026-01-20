@@ -199,6 +199,44 @@ class TechnicalIndicators:
         
         self._merge_indicator(spike, 'volume_spike')
         return self.df
+    
+    def calculate_position_indicators(self, periods: list = [60, 250]) -> pd.DataFrame:
+        """
+        計算相對位階指標 (受 StockSniper 啟發)
+        
+        這些指標能讓 AI 學會「位置判斷」：
+        - 在低檔買進通常勝率較高
+        - 在高檔追買風險較大
+        
+        Args:
+            periods: 回溯期間 (預設 60天=季線, 250天=年線)
+        """
+        logger.info(f"計算位階指標 (Vectorized): {periods}天回溯")
+        
+        close = self.pivots['close']
+        high = self.pivots['high']
+        low = self.pivots['low']
+        
+        for period in periods:
+            # 計算滾動高低點
+            rolling_high = high.rolling(window=period).max()
+            rolling_low = low.rolling(window=period).min()
+            
+            # 距高點百分比 (負數代表低於高點)
+            pct_from_high = ((close - rolling_high) / rolling_high) * 100
+            self._merge_indicator(pct_from_high, f'pct_from_high_{period}d')
+            
+            # 距低點百分比 (正數代表高於低點)
+            pct_from_low = ((close - rolling_low) / rolling_low) * 100
+            self._merge_indicator(pct_from_low, f'pct_from_low_{period}d')
+            
+            # 相對位置 (0-1之間，0=低點，1=高點)
+            range_val = rolling_high - rolling_low
+            relative_position = (close - rolling_low) / range_val
+            relative_position = relative_position.clip(0, 1)  # 防止除0或異常值
+            self._merge_indicator(relative_position, f'relative_position_{period}d')
+        
+        return self.df
 
     def calculate_revenue_factors(self) -> pd.DataFrame:
         """
@@ -241,7 +279,8 @@ class TechnicalIndicators:
         self.calculate_bollinger_bands()
         self.calculate_breakout_flag()
         self.calculate_volume_spike()
-        self.calculate_revenue_factors() # 新增基本面因子
+        self.calculate_position_indicators()  # 新增位階指標
+        self.calculate_revenue_factors()
         
         logger.info("所有技術指標計算完成！")
         return self.df

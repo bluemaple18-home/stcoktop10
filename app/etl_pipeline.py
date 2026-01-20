@@ -114,14 +114,43 @@ class ETLPipeline:
         logger.info("-" * 80)
         fundamental = FundamentalData(df)
         
-        if use_dummy_fundamental:
-            logger.warning("使用虛擬基本面資料（測試模式）")
+        # 抓取營收資料（使用批次抓取）
+        logger.info("批次抓取月營收資料...")
+        try:
+            # 計算營收抓取的日期範圍（取主資料的日期範圍）
+            rev_start = df['date'].min().strftime('%Y-%m-%d')
+            rev_end = df['date'].max().strftime('%Y-%m-%d')
+            
+            revenue_df = orchestrator.twse.fetch_revenue_batch(
+                start_date=rev_start,
+                end_date=rev_end,
+                save_to_disk=True
+            )
+            
+            if not revenue_df.empty:
+                # 合併營收資料
+                df = fundamental.merge_revenue_data(revenue_df)
+                logger.info(f"✅ 已整合真實營收資料，共 {len(revenue_df)} 筆")
+                
+                # 統計營收資料覆蓋率
+                revenue_coverage = (df['revenue_yoy'].notna().sum() / len(df)) * 100
+                self.etl_stats['revenue_data'] = {
+                    'total_records': len(revenue_df),
+                    'coverage_rate': f"{revenue_coverage:.2f}%",
+                    'yoy_mean': df['revenue_yoy'].mean(),
+                    'mom_mean': df['revenue_mom'].mean()
+                }
+            else:
+                logger.warning("營收資料抓取失敗，使用虛擬資料")
+                df = fundamental.create_dummy_fundamental_data()
+                self.etl_stats['revenue_data'] = {'status': 'dummy_data_used'}
+                
+        except Exception as e:
+            logger.error(f"營收資料處理失敗: {e}")
+            logger.warning("改用虛擬基本面資料")
             df = fundamental.create_dummy_fundamental_data()
-        else:
-            # TODO: 實際基本面資料來源待實作
-            logger.warning("實際基本面資料整合尚未實作，使用虛擬資料")
-            df = fundamental.create_dummy_fundamental_data()
-        
+            self.etl_stats['revenue_data'] = {'status': f'error: {str(e)}'}
+            
         # 5. 儲存完整特徵資料
         logger.info("\n[階段 5/7] 儲存完整特徵資料")
         logger.info("-" * 80)

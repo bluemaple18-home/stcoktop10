@@ -196,6 +196,112 @@ class TWSEFetcher:
             logger.error(f"擷取月營收資料失敗 ({year}/{month}): {e}")
             return None
 
+    def fetch_revenue_batch(self, start_date: str, end_date: str, save_to_disk: bool = True) -> pd.DataFrame:
+        """
+        批次擷取月營收資料
+        
+        Args:
+            start_date: 起始日期 (YYYY-MM-DD)
+            end_date: 結束日期 (YYYY-MM-DD)
+            save_to_disk: 是否儲存至 data/raw/revenue_*.parquet
+            
+        Returns:
+            合併後的 DataFrame
+        """
+        from datetime import datetime
+        from dateutil.relativedelta import relativedelta
+        
+        logger.info(f"開始批次擷取營收資料: {start_date} ~ {end_date}")
+        
+        start = datetime.strptime(start_date, '%Y-%m-%d')
+        end = datetime.strptime(end_date, '%Y-%m-%d')
+        
+        all_data = []
+        current = start
+        
+        while current <= end:
+            year = current.year
+            month = current.month
+            
+            # 營收通常在次月 10 日前公告，避免抓取未來月份
+            if current > datetime.now():
+                logger.warning(f"跳過未來月份: {year}/{month}")
+                current += relativedelta(months=1)
+                continue
+                
+            df = self.fetch_revenue_data(year, month)
+            
+            if df is not None and not df.empty:
+                # 異常值偵測
+                df = self._detect_revenue_outliers(df, year, month)
+                
+                all_data.append(df)
+                
+                # 儲存單月資料
+                if save_to_disk:
+                    self._save_revenue_data(df, year, month)
+                    
+            # API 限速：間隔 3 秒
+            import time
+            time.sleep(3)
+            
+            current += relativedelta(months=1)
+        
+        if not all_data:
+            logger.warning("未抓取到任何營收資料")
+            return pd.DataFrame()
+            
+        result = pd.concat(all_data, ignore_index=True)
+        logger.info(f"批次擷取完成，共 {len(result)} 筆資料")
+        return result
+
+    def _detect_revenue_outliers(self, df: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
+        """
+        偵測營收異常值並標記
+        
+        Args:
+            df: 營收資料
+            year, month: 年月（用於 log）
+            
+        Returns:
+            標記後的 DataFrame
+        """
+        df['revenue_outlier'] = False
+        
+        # 異常值條件：YoY > 500% 或 < -90%
+        outlier_mask = (df['revenue_yoy'] > 500) | (df['revenue_yoy'] < -90)
+        
+        if outlier_mask.any():
+            outlier_count = outlier_mask.sum()
+            logger.warning(f"{year}/{month} 發現 {outlier_count} 筆營收異常值")
+            df.loc[outlier_mask, 'revenue_outlier'] = True
+            
+            # 列出異常股票代號（用於檢查）
+            outlier_stocks = df.loc[outlier_mask, ['stock_id', 'stock_name', 'revenue_yoy']].to_dict('records')
+            for stock in outlier_stocks[:5]:  # 最多顯示 5 筆
+                logger.warning(f"  異常: {stock['stock_id']} {stock['stock_name']} YoY={stock['revenue_yoy']:.1f}%")
+        
+        return df
+
+    def _save_revenue_data(self, df: pd.DataFrame, year: int, month: int):
+        """
+        儲存營收資料至 data/raw/revenue_*.parquet
+        
+        Args:
+            df: 營收資料
+            year, month: 年月
+        """
+        from pathlib import Path
+        
+        output_dir = Path("data/raw")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        filename = f"revenue_{year}_{month:02d}.parquet"
+        output_path = output_dir / filename
+        
+        df.to_parquet(output_path, index=False)
+        logger.info(f"營收資料已儲存: {output_path}")
+
 
 class TPEXFetcher:
     """櫃買中心（上櫃）資料擷取器"""
