@@ -1,6 +1,26 @@
 # 技術事件定義設定檔
 # 定義需要計算的事件與相關參數
 
+scoring:
+  alpha: 0.5
+  buy_threshold: 3.0
+  max_bearish: -2.0
+  top_reasons: 3
+  weights:
+    break_20d_high: 2.0
+    ma5_cross_ma20_up: 1.5
+    close_above_bb_mid: 1.0
+    macd_bullish_cross: 1.0
+    rsi_rebound_from_40: 1.0
+    gap_up_close_strong: 1.5
+    volume_spike: 1.0
+    losw_20d_low: -2.0
+    ma5_cross_ma20_down: -1.5
+    close_below_bb_mid: -1.0
+    macd_bearish_cross: -1.0
+    rsi_break_below_50: -1.0
+    long_upper_shadow: -0.5
+
 events:
   # 趨勢事件
   - name: break_20d_high

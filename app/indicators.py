@@ -267,6 +267,132 @@ class TechnicalIndicators:
         self._merge_indicator(rev_momentum, 'revenue_momentum')
         return self.df
 
+    def calculate_ma_squeeze(self, periods: list = [5, 10, 20, 60]) -> pd.DataFrame:
+        """計算均線糾結指標 (各均線間的最大差距)"""
+        logger.info(f"計算均線糾結指標 (Vectorized): {periods}")
+        
+        ma_cols = [f'ma{p}' for p in periods]
+        # 確保這些 MA 已經計算過
+        for col in ma_cols:
+            if col not in self.df.columns:
+                self.calculate_ma([int(col[2:])])
+        
+        # 提取這些 MA 欄位並轉為寬表格
+        ma_pivots = [self.df.pivot(index='date', columns='stock_id', values=col) for col in ma_cols]
+        
+        # 計算最大值與最小值之差 / 平均值
+        ma_stack = np.stack(ma_pivots)
+        ma_max = np.max(ma_stack, axis=0)
+        ma_min = np.min(ma_stack, axis=0)
+        ma_avg = np.mean(ma_stack, axis=0)
+        
+        squeeze = (ma_max - ma_min) / ma_avg
+        self._merge_indicator(pd.DataFrame(squeeze, index=ma_pivots[0].index, columns=ma_pivots[0].columns), 'ma_squeeze')
+        
+        return self.df
+
+    def calculate_bias_ratio(self, periods: list = [5, 10, 20, 60]) -> pd.DataFrame:
+        """計算乖離率 (Bias Ratio)"""
+        logger.info(f"計算乖離率 (Vectorized): {periods}")
+        
+        close = self.pivots['close']
+        for period in periods:
+            ma_col = f'ma{period}'
+            if ma_col not in self.df.columns:
+                self.calculate_ma([period])
+            
+            ma = self.df.pivot(index='date', columns='stock_id', values=ma_col)
+            bias = (close - ma) / ma
+            self._merge_indicator(bias, f'bias_{period}')
+            
+        return self.df
+
+    def calculate_binary_events(self) -> pd.DataFrame:
+        """計算二元事件特徵 (Binary Events) 供模型與解釋使用"""
+        logger.info("計算二元事件特徵 (Vectorized)")
+        
+        # 基本欄位引用
+        close = self.pivots['close']
+        open_ = self.pivots['open']
+        high = self.pivots['high']
+        low = self.pivots['low']
+        volume = self.pivots['volume']
+        
+        # 1. 突破近 20 日新高 (break_20d_high)
+        # shift(1) 確保不包含今日，嚴格突破
+        rolling_max_20 = high.shift(1).rolling(window=20).max()
+        self._merge_indicator((close > rolling_max_20).astype(int), 'break_20d_high')
+
+        # 2. MA5 上穿 MA20 (ma5_cross_ma20_up)
+        # 需確保 MA 已計算
+        if 'ma5' not in self.pivots or 'ma20' not in self.pivots:
+            self.calculate_ma([5, 20])
+        ma5 = self.df.pivot(index='date', columns='stock_id', values='ma5')
+        ma20 = self.df.pivot(index='date', columns='stock_id', values='ma20')
+        
+        # 黃金交叉: 今天 MA5 > MA20 且 昨天 MA5 <= MA20
+        cross_up = (ma5 > ma20) & (ma5.shift(1) <= ma20.shift(1))
+        self._merge_indicator(cross_up.astype(int), 'ma5_cross_ma20_up')
+        
+        # 死亡交叉: 今天 MA5 < MA20 且 昨天 MA5 >= MA20
+        cross_down = (ma5 < ma20) & (ma5.shift(1) >= ma20.shift(1))
+        self._merge_indicator(cross_down.astype(int), 'ma5_cross_ma20_down')
+
+        # 3. 收盤站上布林中軌 (close_above_bb_mid)
+        # 中軌通常是 MA20
+        mid = ma20
+        above_mid = (close > mid) & (close.shift(1) <= mid.shift(1))
+        self._merge_indicator(above_mid.astype(int), 'close_above_bb_mid')
+        
+        # 收盤跌破布林中軌
+        below_mid = (close < mid) & (close.shift(1) >= mid.shift(1))
+        self._merge_indicator(below_mid.astype(int), 'close_below_bb_mid')
+
+        # 4. MACD 金叉/死叉
+        if 'macd' not in self.pivots or 'macd_signal' not in self.pivots:
+            self.calculate_macd()
+        dif = self.df.pivot(index='date', columns='stock_id', values='macd')
+        dem = self.df.pivot(index='date', columns='stock_id', values='macd_signal')
+        
+        macd_bull = (dif > dem) & (dif.shift(1) <= dem.shift(1))
+        macd_bear = (dif < dem) & (dif.shift(1) >= dem.shift(1))
+        self._merge_indicator(macd_bull.astype(int), 'macd_bullish_cross')
+        self._merge_indicator(macd_bear.astype(int), 'macd_bearish_cross')
+
+        # 5. RSI 反彈 (rsi_rebound_from_40)
+        # 假設: RSI 昨天 < 40 且 今天 > 40 (或今天回升勾頭?)
+        # 用戶定義: "rsi_rebound_from_40" -> 簡單定義為從下往上穿過 40
+        if 'rsi' not in self.pivots:
+            self.calculate_rsi()
+        rsi = self.df.pivot(index='date', columns='stock_id', values='rsi')
+        
+        rsi_rebound = (rsi > 40) & (rsi.shift(1) <= 40)
+        self._merge_indicator(rsi_rebound.astype(int), 'rsi_rebound_from_40')
+        
+        # RSI 轉弱 (跌破 50)
+        rsi_weak = (rsi < 50) & (rsi.shift(1) >= 50)
+        self._merge_indicator(rsi_weak.astype(int), 'rsi_break_below_50')
+
+        # 6. 量能突增 (volume_spike) > 20日均量 1.5倍
+        vol_ma20 = volume.rolling(window=20).mean()
+        vol_spike = (volume > (vol_ma20 * 1.5)).astype(int)
+        self._merge_indicator(vol_spike, 'volume_spike_1.5x') # 區分原版
+
+        # 7. 跳空強勢 (gap_up_close_strong)
+        # 定義: 今天開盤 > 昨天最高 (跳空) 且 收盤 > 開盤 (紅K)
+        gap_up = (open_ > high.shift(1)) & (close > open_)
+        self._merge_indicator(gap_up.astype(int), 'gap_up_close_strong')
+
+        # 8. 長上影線 (long_upper_shadow)
+        # 定義: (High - Max(Open, Close)) > Body * 2 (Bar body)
+        body = (close - open_).abs()
+        upper_shadow = high - np.maximum(close, open_)
+        # 避免除以 0: Body 極小時，影線長度 > 股價 0.5%? (簡單版: 影線 > 实体 * 2 且 影線長度 > 收盤價 * 0.01)
+        long_shadow = (upper_shadow > body * 2) & (upper_shadow > close * 0.005)
+        self._merge_indicator(long_shadow.astype(int), 'long_upper_shadow')
+        
+        return self.df
+
     def calculate_all_indicators(self) -> pd.DataFrame:
         """一次計算所有技術指標"""
         logger.info("開始計算所有技術指標 (Vectorized)...")
@@ -279,8 +405,13 @@ class TechnicalIndicators:
         self.calculate_bollinger_bands()
         self.calculate_breakout_flag()
         self.calculate_volume_spike()
-        self.calculate_position_indicators()  # 新增位階指標
+        self.calculate_position_indicators()
+        self.calculate_ma_squeeze()
+        self.calculate_bias_ratio()
         self.calculate_revenue_factors()
+        
+        # 計算二元事件
+        self.calculate_binary_events()
         
         logger.info("所有技術指標計算完成！")
         return self.df
