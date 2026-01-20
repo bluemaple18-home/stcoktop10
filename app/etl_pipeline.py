@@ -14,6 +14,10 @@ from volume_indicators import VolumeIndicators
 from fundamental_data import FundamentalData
 from risk_filter import RiskFilter
 from event_detector import EventDetector
+try:
+    from finmind_integrator import FinMindIntegrator
+except ImportError:
+    from app.finmind_integrator import FinMindIntegrator
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -88,6 +92,13 @@ class ETLPipeline:
         
         # 擷取處置股清單
         suspended_list = orchestrator.fetch_suspended_stocks_list()
+        
+        # 1.1 整合 FinMind 籌碼面資料 (新增)
+        logger.info("\n[階段 1.1] FinMind 籌碼面資料整合")
+        logger.info("-" * 80)
+        # 嘗試從環境變數或檔案讀取 token (此處暫留 null)
+        finmind = FinMindIntegrator()
+        df = finmind.integrate_chip_data(df)
         
         # 2. 技術指標計算
         logger.info("\n[階段 2/7] 技術指標計算")

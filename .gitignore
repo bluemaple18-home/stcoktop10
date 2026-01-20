@@ -45,3 +45,7 @@ artifacts/*
 
 # Logs
 *.log
+
+# MLflow
+mlruns/
+mlflow.db

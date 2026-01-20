@@ -12,6 +12,10 @@ import optuna
 from sklearn.metrics import roc_auc_score, log_loss
 from sklearn.isotonic import IsotonicRegression
 import shap
+import mlflow
+import mlflow.lightgbm
+import webbrowser
+import os
 
 # 引入新的標籤生成器
 try:
@@ -174,41 +178,50 @@ class LightGBMTrainer:
         """Optuna 超參數調優"""
         print(f"⏳ 開始 Optuna 超參數調優 (trials={n_trials})...")
         
+        # 啟動 MLflow 實驗
+        mlflow.set_experiment("Agent_B_Stock_Prediction")
+        
         def objective(trial):
-            param = {
-                'objective': 'binary',
-                'metric': 'auc',
-                'verbosity': -1,
-                'boosting_type': 'gbdt',
-                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.1),
-                'num_leaves': trial.suggest_int('num_leaves', 20, 150),
-                'feature_fraction': trial.suggest_float('feature_fraction', 0.5, 1.0),
-                'bagging_fraction': trial.suggest_float('bagging_fraction', 0.5, 1.0),
-                'bagging_freq': trial.suggest_int('bagging_freq', 1, 10),
-                'min_child_samples': trial.suggest_int('min_child_samples', 5, 100),
-                'lambda_l1': trial.suggest_float('lambda_l1', 1e-8, 10.0, log=True),
-                'lambda_l2': trial.suggest_float('lambda_l2', 1e-8, 10.0, log=True),
-                # 處理類別不平衡 (class imbalance) 的簡單方式
-                'is_unbalance': True 
-            }
-            
-            # 簡易切分 (時間序列)
-            train_size = int(len(X) * 0.8)
-            X_t, y_t = X.iloc[:train_size], y.iloc[:train_size]
-            X_v, y_v = X.iloc[train_size:], y.iloc[train_size:]
-            
-            dtrain = lgb.Dataset(X_t, label=y_t)
-            dval = lgb.Dataset(X_v, label=y_v, reference=dtrain)
-            
-            model = lgb.train(param, dtrain, num_boost_round=500, 
-                              valid_sets=[dval], callbacks=[lgb.early_stopping(30), lgb.log_evaluation(0)])
-            
-            preds = model.predict(X_v)
-            try:
-                score = roc_auc_score(y_v, preds)
-            except:
-                score = 0
-            return score # Maximize AUC
+            with mlflow.start_run(nested=True, run_name=f"Trial_{trial.number}"):
+                param = {
+                    'objective': 'binary',
+                    'metric': 'auc',
+                    'verbosity': -1,
+                    'boosting_type': 'gbdt',
+                    'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.1),
+                    'num_leaves': trial.suggest_int('num_leaves', 20, 150),
+                    'feature_fraction': trial.suggest_float('feature_fraction', 0.5, 1.0),
+                    'bagging_fraction': trial.suggest_float('bagging_fraction', 0.5, 1.0),
+                    'bagging_freq': trial.suggest_int('bagging_freq', 1, 10),
+                    'min_child_samples': trial.suggest_int('min_child_samples', 5, 100),
+                    'lambda_l1': trial.suggest_float('lambda_l1', 1e-8, 10.0, log=True),
+                    'lambda_l2': trial.suggest_float('lambda_l2', 1e-8, 10.0, log=True),
+                    'is_unbalance': True 
+                }
+                
+                # 紀錄參數到 MLflow
+                mlflow.log_params(param)
+                
+                train_size = int(len(X) * 0.8)
+                X_t, y_t = X.iloc[:train_size], y.iloc[:train_size]
+                X_v, y_v = X.iloc[train_size:], y.iloc[train_size:]
+                
+                dtrain = lgb.Dataset(X_t, label=y_t)
+                dval = lgb.Dataset(X_v, label=y_v, reference=dtrain)
+                
+                model = lgb.train(param, dtrain, num_boost_round=500, 
+                                  valid_sets=[dval], callbacks=[lgb.early_stopping(30), lgb.log_evaluation(0)])
+                
+                preds = model.predict(X_v)
+                try:
+                    score = roc_auc_score(y_v, preds)
+                except:
+                    score = 0
+                
+                # 紀錄結果指標到 MLflow
+                mlflow.log_metric("auc", score)
+                
+                return score # Maximize AUC
 
         study = optuna.create_study(direction='maximize')
         study.optimize(objective, n_trials=n_trials)
@@ -235,15 +248,24 @@ class LightGBMTrainer:
         
         print(f"⏳ 訓練最終模型 (Train: {len(X_train)}, Calibration: {len(X_calib)})...")
         
-        lgb_train = lgb.Dataset(X_train, label=y_train, feature_name=feature_names)
-        self.model = lgb.train(params, lgb_train, num_boost_round=500)
-        
-        # 進行機率校準 (Isotonic Regression)
-        print("🔧 執行 Isotonic Probability Calibration...")
-        raw_probs = self.model.predict(X_calib)
-        self.calibrator = IsotonicRegression(out_of_bounds='clip')
-        self.calibrator.fit(raw_probs, y_calib)
-        
+        # 啟動 MLflow 父運行
+        with mlflow.start_run(run_name="Final_Model_Training"):
+            mlflow.log_params(params)
+            mlflow.lightgbm.autolog()
+            
+            lgb_train = lgb.Dataset(X_train, label=y_train, feature_name=feature_names)
+            self.model = lgb.train(params, lgb_train, num_boost_round=500)
+            
+            # 進行機率校準 (Isotonic Regression)
+            print("🔧 執行 Isotonic Probability Calibration...")
+            raw_probs = self.model.predict(X_calib)
+            self.calibrator = IsotonicRegression(out_of_bounds='clip')
+            self.calibrator.fit(raw_probs, y_calib)
+            
+            # 記錄模型到 MLflow
+            mlflow.lightgbm.log_model(self.model, "model")
+            print(f"✅ 最終模型已紀錄至 MLflow")
+            
         return self.model
 
     def _get_default_params(self):
