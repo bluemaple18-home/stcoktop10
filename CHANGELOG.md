@@ -1,5 +1,25 @@
 # Changelog
 
+## [v2.1.0-ml] - 2026-01-20 (Mini 發布: 自動化系統)
+
+### 🤖 Automation System
+
+#### Added
+- **每日自動執行腳本**: `scripts/run_daily.sh` (22:00 ETL + 選股)
+- **每日自動重訓腳本**: `scripts/daily_retrain.sh` (02:00 模型訓練)
+- **PSI 漂移監控**: `app/model_monitor.py` (自動偵測特徵分佈變化)
+- **macOS launchd 排程**: 完整的 plist 設定檔與安裝腳本
+- **自動化設定檔**: `config/automation.yaml` (集中管理參數)
+- **使用手冊**: `docs/AUTOMATION.md` (詳細安裝與管理指南)
+
+#### Features
+- 模型自動備份 (保留 30 天)
+- 訓練失敗自動恢復備份
+- PSI 監控報告 (`artifacts/psi_report.json`)
+- 完整日誌記錄 (`logs/`)
+
+---
+
 ## [v2.0.0-ml] - 2026-01-20 (Mini 發布: ML模型優化)
 
 ### 🎯 Advanced Modeling: 中長期波段策略

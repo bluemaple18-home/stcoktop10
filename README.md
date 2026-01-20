@@ -83,11 +83,55 @@ python app/etl_pipeline.py --validate
 > 首次執行會需要約 30-60 分鐘（需下載近 3 年資料），請耐心等待。
 > API 請求間隔預設 3 秒，避免被 TWSE/TPEX 封鎖。
 
-### 每日選股（開發中）
+### Agent B｜選股系統（v2.0.0-ml）
+
+**中長期波段策略** - 適合股市小白、無時間盯盤的投資者
+
+- **每日選股**: 自動產出 Top 10 推薦股票
+- **深度學習**: LightGBM 分類模型 + Isotonic 機率校準
+- **AI 可解釋性**: SHAP 推薦理由（告訴你為什麼選這檔）
+- **績效驗證**: 回測勝率 67%，平均報酬 5.33% (10天持有)
 
 ```bash
-python app/daily.py
+# 手動執行選股
+python app/agent_b_ranking.py
+
+# 查看結果
+cat artifacts/ranking_$(date +%Y-%m-%d).csv
 ```
+
+---
+
+## 🤖 自動化系統
+
+### 快速安裝（macOS）
+
+```bash
+# 一鍵安裝自動排程
+bash scripts/setup_launchd.sh
+```
+
+**功能**:
+- 📊 **每日 22:00**: ETL 資料更新 + 選股推論
+- 🔧 **每日 02:00**: 模型重新訓練
+- 📈 **PSI 監控**: 自動偵測市場環境變化
+
+### 手動測試
+
+```bash
+# 測試每日執行流程
+bash scripts/run_daily.sh
+
+# 測試模型重訓
+bash scripts/daily_retrain.sh
+
+# 測試 PSI 漂移監控
+python app/model_monitor.py
+```
+
+詳細說明請參考：[AUTOMATION.md](docs/AUTOMATION.md)
+
+---
 
 ### 啟動 Web UI（開發中）
 

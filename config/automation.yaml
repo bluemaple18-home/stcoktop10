@@ -1,0 +1,56 @@
+# tw-top10 自動化設定檔
+# 控制每日執行、重訓排程、PSI 監控等功能
+
+# ========================================
+# 每日執行設定
+# ========================================
+daily:
+  enabled: true
+  run_time: "22:00"          # 每日執行時間
+  weekend_enabled: false      # 週末是否執行 (false = 僅工作日)
+
+# ========================================
+# 模型重訓設定
+# ========================================
+retrain:
+  enabled: true
+  schedule: "daily"           # daily, weekly, monthly
+  time: "02:00"               # 執行時間
+  backup_keep_days: 30        # 保留備份天數
+  
+  # Optuna 調優參數
+  optuna_trials: 20           # 每次重訓的調優次數
+  
+# ========================================
+# PSI 漂移監控設定
+# ========================================
+monitor:
+  enabled: true
+  check_days: 30              # 檢查最近幾天的資料
+  psi_warning: 0.25           # PSI 警告閾值
+  psi_critical: 0.5           # PSI 嚴重閾值
+  auto_retrain: false         # 是否在嚴重漂移時自動重訓 (建議 false，手動確認)
+  
+# ========================================
+# 通知設定
+# ========================================
+notify:
+  line_enabled: false         # Line Notify 開關
+  line_token: ""              # Line Notify Token (若啟用)
+  
+  email_enabled: false        # Email 通知開關 (未來功能)
+  email_to: ""
+  
+# ========================================
+# 日誌設定
+# ========================================
+logging:
+  level: "INFO"               # DEBUG, INFO, WARNING, ERROR
+  keep_days: 90               # 保留日誌天數
+  
+# ========================================
+# 進階設定
+# ========================================
+advanced:
+  parallel_processing: true   # ETL 是否平行處理
+  max_workers: 4              # 平行處理 worker 數量
