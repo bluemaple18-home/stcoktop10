@@ -1,5 +1,28 @@
 # Changelog
 
+## [v2.2.0-ml] - 2026-01-20 (Mini 發布: Web UI 介面)
+
+### 📱 Web Interface
+
+#### Added
+- **Streamlit Web UI**: 完整的視覺化介面 (`app/ui.py`)
+  - 今日選股頁面（Top 10 + AI 推薦理由）
+  - 歷史績效頁面（趨勢圖 + 回測報告）
+  - PSI 監控頁面（漂移狀態視覺化）
+  - 系統資訊頁面
+- **ngrok 遠端存取**: 從任何地方連回 Mac Mini
+- **啟動腳本**: `scripts/start_ui.sh` (整合 Streamlit + ngrok)
+- **launchd 自動啟動**: 開機自動啟動 Web UI
+- **使用手冊**: `docs/WEBUI.md` (詳細安裝與設定指南)
+
+#### Features
+- 響應式設計（支援手機、平板、電腦）
+- 即時資料更新（快取 5 分鐘）
+- 互動式圖表（Plotly）
+- 自訂 CSS 樣式
+
+---
+
 ## [v2.1.0-ml] - 2026-01-20 (Mini 發布: 自動化系統)
 
 ### 🤖 Automation System

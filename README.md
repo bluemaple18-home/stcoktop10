@@ -133,6 +133,38 @@ python app/model_monitor.py
 
 ---
 
+## 📱 Web UI 介面
+
+### 快速啟動
+
+```bash
+# 本地存取 (同網路)
+bash scripts/start_ui.sh
+
+# 開啟瀏覽器
+open http://localhost:8501
+```
+
+**功能**:
+- 🎯 **今日選股**: 查看 Top 10 推薦與 AI 理由
+- 📊 **歷史績效**: 追蹤選股趨勢與回測報告
+- 🔍 **PSI 監控**: 即時查看模型漂移狀態
+- 📱 **遠端存取**: 透過 ngrok 從任何地方連線
+
+### 遠端存取設定
+
+```bash
+# 安裝 ngrok
+/opt/homebrew/bin/brew install ngrok
+
+# 啟動 Web UI + ngrok
+bash scripts/start_ui.sh
+```
+
+詳細說明請參考：[WEBUI.md](docs/WEBUI.md)
+
+---
+
 ### 啟動 Web UI（開發中）
 
 ```bash
