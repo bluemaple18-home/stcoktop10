@@ -236,15 +236,28 @@ class StockRanker:
             # Select Top 10
             top10 = rank_df.head(10).copy()
             
+            # Enrich with Stock Names (using local mapping)
+            if 'stock_name' not in top10.columns or top10['stock_name'].isnull().any():
+                logger.info("正在添加股票名稱...")
+                from stock_names import get_stock_name
+                
+                names = []
+                for _, row in top10.iterrows():
+                    sid = str(row['stock_id'])
+                    names.append(get_stock_name(sid))
+                
+                top10['stock_name'] = names
+                # Update rank_df as well for completeness if needed (optional)
+
             # Save
             today_str = date if date else datetime.now().strftime('%Y-%m-%d')
             path = self.artifact_dir / f"ranking_{today_str}.csv"
             
             out_cols = ['stock_id', 'stock_name', 'close', 'final_score', 'model_prob', 'rule_score', 'reasons']
             # Ensure cols exist
-            out_cols = [c for c in out_cols if c in rank_df.columns]
+            out_cols = [c for c in out_cols if c in top10.columns]
             
-            rank_df[out_cols].to_csv(path, index=False, encoding='utf-8-sig')
+            top10[out_cols].to_csv(path, index=False, encoding='utf-8-sig')
             
             print(f"\n🏆 Top 10 選股結果 (含 AI 解釋) ({today_str}):")
             print(top10[out_cols].to_string(index=False))

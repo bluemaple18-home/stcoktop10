@@ -118,9 +118,27 @@ def main():
         
         page = st.radio(
             "選擇頁面",
-            ["🎯 今日選股", "📊 歷史績效", "🔍 PSI 監控", "ℹ️ 系統資訊"],
+            ["🎯 今日選股", "📊 歷史績效", "🔍 PSI 監控", "📈 個股分析", "ℹ️ 系統資訊"],
             index=0
         )
+        
+        # If stock analysis selected, show stock selector
+        if page == "📈 個股分析":
+            st.markdown("---")
+            st.markdown("### 選擇股票")
+            
+            # Load top 10 for quick access
+            df, _ = load_latest_ranking()
+            if df is not None and not df.empty:
+                stock_options = [f"{row['stock_id']} {row.get('stock_name', '')}" 
+                                for _, row in df.head(10).iterrows()]
+                selected = st.selectbox("Top 10 快選", stock_options)
+                
+                if selected:
+                    stock_id = selected.split()[0]
+                    stock_name = ' '.join(selected.split()[1:])
+                    st.session_state['selected_stock'] = stock_id
+                    st.session_state['selected_stock_name'] = stock_name
         
         st.markdown("---")
         st.markdown("### 系統狀態")
@@ -128,7 +146,9 @@ def main():
         st.info(f"🕐 更新時間: {datetime.now().strftime('%H:%M')}")
     
     # 根據選擇顯示不同頁面
-    if page == "🎯 今日選股":
+    if st.session_state.get('page') == 'detail' or page == "📈 個股分析":
+        show_stock_detail()
+    elif page == "🎯 今日選股":
         show_daily_ranking()
     elif page == "📊 歷史績效":
         show_performance()
@@ -174,8 +194,15 @@ def show_daily_ranking():
             col1, col2, col3 = st.columns([2, 3, 5])
             
             with col1:
-                st.markdown(f"### {idx+1}. {row.get('stock_id', 'N/A')}")
-                st.caption(row.get('stock_name', ''))
+                stock_id = row.get('stock_id', 'N/A')
+                stock_name = row.get('stock_name', '')
+                
+                # Make clickable
+                if st.button(f"{idx+1}. {stock_id} {stock_name}", key=f"stock_{idx}"):
+                    st.session_state['selected_stock'] = stock_id
+                    st.session_state['selected_stock_name'] = stock_name
+                    st.session_state['page'] = 'detail'
+                    st.rerun()
             
             with col2:
                 st.metric("綜合分數", f"{row.get('final_score', 0):.3f}")
@@ -184,7 +211,40 @@ def show_daily_ranking():
             with col3:
                 st.markdown("**推薦理由**")
                 reasons = row.get('reasons', '無')
-                st.info(reasons if reasons else "無特定理由")
+                
+                # Parse AI reasons (format: "| AI: feature1(+0.12) feature2(-0.14)")
+                if reasons and '| AI:' in reasons:
+                    ai_part = reasons.split('| AI:')[1].strip()
+                    # Split by space, parse each feature
+                    features = ai_part.split()
+                    chips = []
+                    for feat in features:
+                        if '(' in feat and ')' in feat:
+                            # Extract feature name and value
+                            name = feat[:feat.index('(')]
+                            value = feat[feat.index('(')+1:feat.index(')')]
+                            # Translate common features
+                            translations = {
+                                'volume_ratio_20d': '20日量能比',
+                                'd': 'KD-D值',
+                                'k': 'KD-K值',
+                                'macd': 'MACD',
+                                'macd_signal': 'MACD信號',
+                                'bb_width': '布林寬度',
+                                'pct_from_low_60d': '60日相對低點',
+                                'pct_from_high_60d': '60日相對高點',
+                                'ma20': 'MA20',
+                                'rsi': 'RSI'
+                            }
+                            display_name = translations.get(name, name)
+                            
+                            # Color based on value
+                            if value.startswith('+'):
+                                st.markdown(f':green[✓ {display_name} {value}]', unsafe_allow_html=True)
+                            else:
+                                st.markdown(f':orange[⚠ {display_name} {value}]', unsafe_allow_html=True)
+                else:
+                    st.info(reasons if reasons else "無特定理由")
             
             st.markdown("---")
 
@@ -296,6 +356,437 @@ def show_psi_monitor():
         
         fig.update_layout(template='plotly_white')
         st.plotly_chart(fig, use_container_width=True)
+
+# ========================================
+# 頁面: 個股詳細資訊
+# ========================================
+
+def show_stock_detail():
+    # Back button
+    col1, col2 = st.columns([1, 5])
+    with col1:
+        if st.button("← 返回"):
+            st.session_state['page'] = None
+            st.rerun()
+    
+    stock_id = st.session_state.get('selected_stock', None)
+    stock_name = st.session_state.get('selected_stock_name', '')
+    
+    if not stock_id:
+        st.warning("⚠️ 請先在左側選擇股票")
+        return
+    
+    st.title(f"📊 {stock_id} {stock_name}")
+    st.markdown("---")
+    
+    # Load data
+    try:
+        features_df = pd.read_parquet("data/clean/features.parquet")
+        stock_data = features_df[features_df['stock_id'] == str(stock_id)].copy()
+        
+        if stock_data.empty:
+            st.error(f"❌ 找不到 {stock_id} 的歷史資料")
+            return
+        
+        # Sort by date and get latest
+        stock_data = stock_data.sort_values('date')
+        latest = stock_data.iloc[-1]
+        
+        # Load ranking data to get AI reasons
+        ranking_df, _ = load_latest_ranking()
+        stock_ranking = ranking_df[ranking_df['stock_id'] == str(stock_id)]
+        
+        # ===========================================
+        # Section 1: AI 為什麼推薦這支股票？
+        # ===========================================
+        st.header("🤖 AI 推薦理由")
+        
+        if not stock_ranking.empty:
+            row = stock_ranking.iloc[0]
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                score = row.get('final_score', 0)
+                st.metric("綜合評分", f"{score:.3f}", help="AI 模型綜合評分，越高表示潛力越大")
+            with col2:
+                prob = row.get('model_prob', 0)
+                st.metric("AI 預測勝率", f"{prob*100:.1f}%", help="未來 10 天正報酬的機率")  
+            with col3:
+                rank = ranking_df[ranking_df['stock_id'] == str(stock_id)].index[0] + 1
+                st.metric("排名", f"#{rank}", help="在今日所有股票中的排名")
+            
+            st.markdown("### 🔍 關鍵訊號解析")
+            
+            reasons = row.get('reasons', '')
+            if reasons and '| AI:' in reasons:
+                ai_part = reasons.split('| AI:')[1].strip()
+                features = ai_part.split()
+                
+                # Parse and explain each signal
+                explanations = {
+                    'volume_ratio_20d': {
+                        'name': '📊 20日量能比',
+                        'positive': '成交量明顯放大，資金開始關注',
+                        'negative': '成交量萎縮，市場觀望氣氛濃厚'
+                    },
+                    'bb_width': {
+                        'name': '📏 布林通道寬度',
+                        'positive': '盤整後即將突破，波動度增加',
+                        'negative': '處於盤整狀態，等待方向明朗'
+                    },
+                    'macd': {
+                        'name': '📈 MACD 動能',
+                        'positive': 'MACD 出現黃金交叉，短期趨勢轉強',
+                        'negative': 'MACD 死亡交叉，短期趨勢轉弱'
+                    },
+                    'macd_signal': {
+                        'name': '📊 MACD 訊號',
+                        'positive': 'MACD 訊號線向上，動能增強',
+                        'negative': 'MACD 訊號線向下，動能減弱'
+                    },
+                    'd': {
+                        'name': '📉 KD-D 值',
+                        'positive': 'KD 指標向上，短期有支撐',
+                        'negative': 'KD 指標向下，短期承壓'
+                    },
+                    'k': {
+                        'name': '📈 KD-K 值',
+                        'positive': 'KD-K 值向上，買盤進場',
+                        'negative': 'KD-K 值向下，賣壓出現'
+                    },
+                    'pct_from_low_60d': {
+                        'name': '📌 相對 60 日低點',
+                        'positive': '股價接近 60 日低點，潛在反彈機會',
+                        'negative': '股價遠離 60 日低點'
+                    },
+                    'pct_from_high_60d': {
+                        'name': '📌 相對 60 日高點',
+                        'positive': '股價接近 60 日高點，突破在即',
+                        'negative': '股價遠離 60 日高點'
+                    },
+                    'ma20': {
+                        'name': '📊 20日均線',
+                        'positive': '站上 20 日均線，中期趨勢轉多',
+                        'negative': '跌破 20 日均線，中期趨勢轉空'
+                    },
+                    'rsi': {
+                        'name': '📊 RSI 強弱指標',
+                        'positive': 'RSI 向上，買盤力道增強',
+                        'negative': 'RSI 向下，賣壓增加'
+                    }
+                }
+                
+                for feat in features:
+                    if '(' in feat and ')' in feat:
+                        name = feat[:feat.index('(')]
+                        value = feat[feat.index('(')+1:feat.index(')')]
+                        
+                        if name in explanations:
+                            info = explanations[name]
+                            is_positive = value.startswith('+')
+                            
+                            if is_positive:
+                                st.success(f"✅ **{info['name']}** _{value}_  \n{info['positive']}")
+                            else:
+                                st.warning(f"⚠️ **{info['name']}** _{value}_  \n{info['negative']}")
+        else:
+            st.info("此股票不在今日 Top 10 推薦清單中")
+        
+        st.markdown("---")
+        
+        # ===========================================
+        # Section 2: 目前技術位置分析
+        # ===========================================
+        st.header("📍 目前技術位置")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("收盤價", f"${latest['close']:.2f}")
+        with col2:
+            ma20 = latest.get('ma20', latest['close'])
+            diff_ma20 = ((latest['close'] - ma20) / ma20 * 100) if ma20 > 0 else 0
+            st.metric("MA20", f"${ma20:.2f}", f"{diff_ma20:+.1f}%")
+        with col3:
+            rsi = latest.get('rsi', 50)
+            rsi_status = "超買" if rsi > 70 else ("超賣" if rsi < 30 else "中性")
+            st.metric("RSI", f"{rsi:.1f}", rsi_status)
+        with col4:
+            k_val = latest.get('k', 50)
+            d_val = latest.get('d', 50)
+            kd_status = "黃金交叉" if k_val > d_val else "死亡交叉"
+            st.metric("KD", f"K:{k_val:.1f} D:{d_val:.1f}", kd_status)
+        
+        # Position interpretation
+        st.markdown("### 💡 技術面解讀")
+        
+        # MA20 position
+        if latest['close'] > ma20:
+            st.success("✅ **多頭格局** - 股價站上 20 日均線，中期趨勢偏多")
+        else:
+            st.error("⚠️ **空頭格局** - 股價跌破 20 日均線，中期趨勢偏空")
+        
+        # RSI interpretation
+        if rsi > 70:
+            st.warning("⚠️ **RSI 超買** - 短期漲多，注意回檔風險")
+        elif rsi < 30:
+            st.info("💎 **RSI 超賣** - 短期跌深，可能出現反彈")
+        else:
+            st.info(f"📊 **RSI 中性區** - 目前 RSI {rsi:.1f}，尚未過熱或過冷")
+        
+        # KD interpretation  
+        if k_val > d_val and k_val > 50:
+            st.success("✅ **KD 黃金交叉 + 強勢** - 短期買盤力道強")
+        elif k_val < d_val and k_val < 50:
+            st.error("⚠️ **KD 死亡交叉 + 弱勢** - 短期賣壓較重")
+        
+        st.markdown("---")
+        
+        # ===========================================
+        # Section 3: 價格走勢圖 (K線 + 成交量)
+        # ===========================================
+        st.header("📈 價格走勢圖（近 60 天）")
+        
+        # Get last 60 days
+        display_data = stock_data.tail(60).copy()
+        
+        # Create subplots: K-line on top, volume on bottom
+        from plotly.subplots import make_subplots
+        
+        fig = make_subplots(
+            rows=2, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.03,
+            row_heights=[0.7, 0.3],
+            subplot_titles=('價格', '成交量')
+        )
+        
+        # === Top subplot: Candlestick + MA + Bollinger ===
+        if all(col in display_data.columns for col in ['open', 'high', 'low', 'close']):
+            fig.add_trace(go.Candlestick(
+                x=display_data['date'],
+                open=display_data['open'],
+                high=display_data['high'],
+                low=display_data['low'],
+                close=display_data['close'],
+                name='價格',
+                increasing_line_color='#FF3B30',  # 台股紅色 = 漲
+                decreasing_line_color='#34C759',  # 台股綠色 = 跌
+                increasing_fillcolor='#FF3B30',
+                decreasing_fillcolor='#34C759'
+            ), row=1, col=1)
+        else:
+            # Fallback to line
+            fig.add_trace(go.Scatter(
+                x=display_data['date'],
+                y=display_data['close'],
+                mode='lines',
+                name='收盤價',
+                line=dict(color='#1f77b4', width=2)
+            ), row=1, col=1)
+        
+        # Add MA lines
+        for ma_col, color, name in [('ma5', '#FF9500', 'MA5'), ('ma20', '#007AFF', 'MA20'), ('ma60', '#5856D6', 'MA60')]:
+            if ma_col in display_data.columns:
+                fig.add_trace(go.Scatter(
+                    x=display_data['date'],
+                    y=display_data[ma_col],
+                    mode='lines',
+                    name=name,
+                    line=dict(color=color, width=1.5, dash='dot'),
+                    showlegend=True
+                ), row=1, col=1)
+        
+        # Add Bollinger Bands
+        if all(col in display_data.columns for col in ['bb_upper', 'bb_lower']):
+            fig.add_trace(go.Scatter(
+                x=display_data['date'],
+                y=display_data['bb_upper'],
+                mode='lines',
+                name='布林上軌',
+                line=dict(color='rgba(100,100,100,0.3)', width=1, dash='dash'),
+                showlegend=False
+            ), row=1, col=1)
+            fig.add_trace(go.Scatter(
+                x=display_data['date'],
+                y=display_data['bb_lower'],
+                mode='lines',
+                name='布林下軌',
+                line=dict(color='rgba(100,100,100,0.3)', width=1, dash='dash'),
+                fill='tonexty',
+                fillcolor='rgba(100,100,100,0.1)',
+                showlegend=False
+            ), row=1, col=1)
+        
+        # === Bottom subplot: Volume with color based on price change ===
+        if 'volume' in display_data.columns:
+            # Calculate volume colors based on close vs open
+            volume_colors = []
+            for _, row in display_data.iterrows():
+                if row['close'] >= row['open']:
+                    volume_colors.append('#FF3B30')  # 紅色 = 漲
+                else:
+                    volume_colors.append('#34C759')  # 綠色 = 跌
+            
+            fig.add_trace(go.Bar(
+                x=display_data['date'],
+                y=display_data['volume'],
+                name='成交量',
+                marker_color=volume_colors,
+                showlegend=False
+            ), row=2, col=1)
+        
+        # Update layout
+        fig.update_layout(
+            hovermode='x unified',
+            template='plotly_white',
+            height=600,
+            xaxis_rangeslider_visible=False,
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
+        
+        # Update axes
+        fig.update_yaxes(title_text="價格 (元)", row=1, col=1)
+        fig.update_yaxes(title_text="成交量 (張)", row=2, col=1)
+        fig.update_xaxes(title_text="日期", row=2, col=1)
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        st.markdown("---")
+        
+        # ===========================================
+        # Section 4: 輔助指標（簡化版）
+        # ===========================================
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("📊 MACD 動能指標")
+            
+            if all(col in display_data.columns for col in ['macd', 'macd_signal', 'macd_hist']):
+                fig_macd = go.Figure()
+                
+                fig_macd.add_trace(go.Scatter(
+                    x=display_data['date'],
+                    y=display_data['macd'],
+                    mode='lines',
+                    name='MACD',
+                    line=dict(color='#1f77b4', width=2)
+                ))
+                
+                fig_macd.add_trace(go.Scatter(
+                    x=display_data['date'],
+                    y=display_data['macd_signal'],
+                    mode='lines',
+                    name='Signal',
+                    line=dict(color='#ff7f0e', width=2)
+                ))
+                
+                colors = ['green' if val >= 0 else 'red' for val in display_data['macd_hist']]
+                fig_macd.add_trace(go.Bar(
+                    x=display_data['date'],
+                    y=display_data['macd_hist'],
+                    name='Histogram',
+                    marker_color=colors,
+                    opacity=0.5
+                ))
+                
+                fig_macd.update_layout(
+                    xaxis_title="",
+                    yaxis_title="MACD",
+                    hovermode='x unified',
+                    template='plotly_white',
+                    height=300,
+                    showlegend=True,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
+                
+                st.plotly_chart(fig_macd, use_container_width=True)
+        
+        with col2:
+            st.subheader("📉 KD 指標")
+            
+            if all(col in display_data.columns for col in ['k', 'd']):
+                fig_kd = go.Figure()
+                
+                fig_kd.add_trace(go.Scatter(
+                    x=display_data['date'],
+                    y=display_data['k'],
+                    mode='lines',
+                    name='K值',
+                    line=dict(color='#1f77b4', width=2)
+                ))
+                
+                fig_kd.add_trace(go.Scatter(
+                    x=display_data['date'],
+                    y=display_data['d'],
+                    mode='lines',
+                    name='D值',
+                    line=dict(color='#ff7f0e', width=2)
+                ))
+                
+                fig_kd.add_hline(y=80, line_dash="dash", line_color="red", opacity=0.5, annotation_text="超買")
+                fig_kd.add_hline(y=20, line_dash="dash", line_color="green", opacity=0.5, annotation_text="超賣")
+                
+                fig_kd.update_layout(
+                    xaxis_title="",
+                    yaxis_title="KD值",
+                    hovermode='x unified',
+                    template='plotly_white',
+                    height=300,
+                    showlegend=True,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
+                
+                st.plotly_chart(fig_kd, use_container_width=True)
+        
+        st.markdown("---")
+        
+        # ===========================================
+        # Section 5: 投資建議（免責聲明）
+        # ===========================================
+        st.header("💡 參考建議")
+        
+        st.info("""
+        **📌 如何使用這些資訊？**
+        
+        1. **AI 推薦理由** - 了解為什麼 AI 選中這檔股票
+        2. **技術位置** - 判斷目前是高點還是低點
+        3. **K 線圖** - 觀察價格趨勢與支撐壓力
+        4. **MACD/KD** - 確認動能方向
+        
+        **⚠️ 建議持有期：10 天**（根據回測數據）
+        
+        **✅ 適合進場時機**：
+        - AI 評分 > 0.45
+        - 股價站上 MA20
+        - RSI 未超買 (< 70)
+        - KD 黃金交叉
+        
+        **❌ 不建議進場**：
+        - RSI 超買 (> 80)
+        - 股價跌破 MA20 且 KD 死亡交叉
+        - 成交量萎縮
+        """)
+        
+        st.warning("""
+        **⚠️ 投資警語**
+        
+        本系統僅供參考，不構成投資建議。
+        投資有風險，請謹慎評估自身風險承受能力。
+        過去績效不代表未來表現。
+        """)
+        
+    except Exception as e:
+        st.error(f"載入資料時發生錯誤: {e}")
+        import traceback
+        st.code(traceback.format_exc())
 
 # ========================================
 # 頁面 4: 系統資訊

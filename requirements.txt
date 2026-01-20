@@ -16,6 +16,14 @@ ta>=0.10.0
 scikit-learn>=1.3.0
 lightgbm>=4.0.0
 xgboost>=2.0.0
+shap>=0.41.0              # SHAP explainer for AI interpretability
+mlflow>=2.8.0             # MLflow tracking and experiment management
+
+# 金融資料
+finmind>=1.2.0            # FinMind 台股籌碼資料
+
+# 回測框架
+vectorbt>=0.25.0          # vectorbt backtesting framework
 
 # 資料擷取
 requests>=2.31.0
