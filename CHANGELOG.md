@@ -1,5 +1,27 @@
 # Changelog
 
+## [v2.5.0-verified] - 2026-01-21 (驗證系統整合)
+
+### 🔧 系統改進
+
+#### Added
+- **自動化驗證腳本**: 新增 `scripts/verify_ui_robust.py`
+  - 使用 Playwright 進行完整的 UI 功能測試
+  - 自動檢測頁面載入、點擊互動、中文化驗證
+  - 支援 headless 與 visible 兩種模式
+  - 自動截圖存證功能
+- **雙重驗證機制**: 整合原生瀏覽器工具與 Python 腳本驗證
+
+#### Fixed
+- **PyArrow 相容性**: 確認 pyarrow 21.0.0 與 pandas 2.3.3 版本相容
+- **推薦理由中文化**: 整合 Mini 環境的 `SIGNAL_TRANSLATIONS` 對照表
+
+#### Technical
+- 新增 Playwright 依賴 (用於自動化測試)
+- 建立標準化驗證流程，確保未來開發的穩定性
+
+---
+
 ## [v2.4.0-ui] - 2026-01-21 (UI/UX 大幅優化)
 
 ### 🎨 Web UI 改進
