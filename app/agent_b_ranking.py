@@ -108,6 +108,9 @@ class StockRanker:
         
         if universe_path.exists():
             universe = pd.read_parquet(universe_path)
+            if universe.empty:
+                logger.warning("universe.parquet 是空的，使用 features 所有股票")
+                universe = pd.DataFrame({'stock_id': features['stock_id'].unique()})
         else:
             universe = pd.DataFrame({'stock_id': features['stock_id'].unique()})
 
@@ -117,6 +120,14 @@ class StockRanker:
             target_date = features['date'].max()
             
         logger.info(f"載入日期: {target_date}")
+        
+        # 優化：只保留最近 90 天以加速 Rolling 計算
+        start_date = target_date - pd.Timedelta(days=90)
+        features = features[features['date'] >= start_date].copy()
+        
+        # 預計算：壓力線 (近20日高點，不含今日)
+        features['ref_high_20d'] = features.groupby('stock_id')['high'].transform(lambda x: x.shift(1).rolling(20).max())
+        features['ref_high_60d'] = features.groupby('stock_id')['high'].transform(lambda x: x.shift(1).rolling(60).max())
         
         daily_features = features[features['date'] == target_date].copy()
         
@@ -133,7 +144,7 @@ class StockRanker:
         if len(float_cols) > 0:
             df[float_cols] = df[float_cols].astype('float32')
             
-        return df
+        return df, features # Return both daily and history
 
     def calculate_scores(self, df: pd.DataFrame) -> pd.DataFrame:
         """計算總分 (含校準機率)"""
@@ -178,7 +189,81 @@ class StockRanker:
                 tag = f"{display_name}(+{weight}) " if weight > 0 else f"{display_name}({weight}) "
                 
                 if reason_mask.any():
-                    df.loc[reason_mask, 'reasons'] = df.loc[reason_mask, 'reasons'] + tag
+                    # 暫存原始訊號，稍後統一組裝模板
+                    # df.loc[reason_mask, 'reasons'] = df.loc[reason_mask, 'reasons'] + tag
+                    # 這裡改為用一個 new column 存 raw signals
+                    if 'raw_signals' not in df.columns:
+                        df['raw_signals'] = ""
+                    df.loc[reason_mask, 'raw_signals'] = df.loc[reason_mask, 'raw_signals'] + tag
+        
+        # 組裝完整模板
+        # 需要計算：止損(MA20 or Low*0.95)、目標(Close*1.1)
+        # 格式：
+        # **🎯 操作策略**
+        # • 進場：{Close}
+        # • 止損：{Stop_Loss} ({Note})
+        # • 目標：{Target} (+10%)
+        #
+        # **💡 關鍵理由**
+        # • {Reason 1}
+        # • {Reason 2}
+        
+        reasons_formatted = []
+        for idx, row in df.iterrows():
+            close = row.get('close', 0)
+            ma20 = row.get('ma20', 0)
+            
+            # 策略計算
+            if ma20 > 0 and close > ma20:
+                stop_loss = ma20 * 0.98 # 月線下方一點點
+                stop_note = "月線支撐"
+            else:
+                stop_loss = close * 0.95
+                stop_note = "回檔5%"
+                
+            target_price = close * 1.1 # 預設 10% 獲利
+            
+            # 解析原始訊號
+            raw_sigs = row.get('raw_signals', '').strip()
+            # 移除分數括號，只留中文名稱
+            import re
+            clean_sigs = re.sub(r'\([+-]?\d+\.?\d*\)', '', raw_sigs).split()
+            
+            # 組合模板
+            tpl = f"""**🎯 操作策略**  
+• 進場：{close:.1f}  
+• 止損：{stop_loss:.1f} ({stop_note})  
+• 目標：{target_price:.1f} (+10%)  
+
+**💡 關鍵理由**  
+"""
+            if clean_sigs:
+                # 豐富化理由 (加入具體數值)
+                enriched_sigs = []
+                for s in clean_sigs[:3]:
+                    if '突破20日' in s:
+                        prior_high = row.get('ref_high_20d', 0)
+                        if prior_high > 0:
+                            s = f"{s} (壓力{prior_high:.1f})"
+                    if '突破60日' in s:
+                        prior_high = row.get('ref_high_60d', 0)
+                        if prior_high > 0:
+                            s = f"{s} (壓力{prior_high:.1f})"
+                    if '月線支撐' in s:
+                        s = f"{s} (MA20:{ma20:.1f})"
+                    if '黃金交叉' in s:
+                        # 標註日期 (當日)
+                        date_str = row['date'].strftime('%m/%d') if 'date' in row else ""
+                        s = f"{s} ({date_str})"
+                    enriched_sigs.append(s)
+                    
+                tpl += "  \n".join([f"• {s}" for s in enriched_sigs])
+            else:
+                tpl += "• 綜合技術指標轉強"
+                
+            reasons_formatted.append(tpl)
+            
+        df['reasons'] = reasons_formatted
         
         # 3. 規則分數正規化
         max_score = df['rule_score'].max()
@@ -248,7 +333,7 @@ class StockRanker:
         """執行排名主流程"""
         try:
             # Load Data
-            df = self.load_daily_data(date)
+            df, history_df = self.load_daily_data(date)
             if df.empty:
                 logger.warning("無資料可排名")
                 return
@@ -292,8 +377,8 @@ class StockRanker:
             # 新增：生成結構化分析報告
             try:
                 print("\n📝 生成結構化分析報告...")
-                report_gen = StockReportGenerator(artifact_dir=str(self.artifact_dir))
-                report_gen.generate_report(ranked_df=rank_df, features_df=df)
+                report_gen = StockReportGenerator(artifacts_dir=str(self.artifact_dir))
+                report_gen.generate_report(ranked_df=rank_df, features_df=history_df)
             except Exception as report_err:
                 logger.warning(f"報告生成失敗（不影響主流程）: {report_err}")
             

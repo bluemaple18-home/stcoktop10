@@ -358,6 +358,30 @@ def show_psi_monitor():
         st.plotly_chart(fig, use_container_width=True)
 
 # ========================================
+# 頁面: 分析報告
+# ========================================
+
+def show_analysis_report():
+    st.header("📝 結構化分析報告")
+    
+    report_path = Path("artifacts/analysis_report.md")
+    
+    if not report_path.exists():
+        st.warning("⚠️ 尚無分析報告，請先執行 `python app/agent_b_ranking.py`")
+        return
+    
+    # 顯示報告生成時間
+    import os
+    mod_time = datetime.fromtimestamp(os.path.getmtime(report_path))
+    st.info(f"📅 報告生成時間: {mod_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    # 讀取並顯示 Markdown 報告
+    with open(report_path, 'r', encoding='utf-8') as f:
+        report_content = f.read()
+    
+    st.markdown(report_content, unsafe_allow_html=True)
+
+# ========================================
 # 頁面: 個股詳細資訊
 # ========================================
 
@@ -397,147 +421,149 @@ def show_stock_detail():
         stock_ranking = ranking_df[ranking_df['stock_id'] == str(stock_id)]
         
         # ===========================================
-        # Section 1: AI 為什麼推薦這支股票？
+        # Section 1: AI 為什麼推薦這支股票？(左欄) + 技術位置(右欄)
         # ===========================================
-        st.header("🤖 AI 推薦理由")
+        col_left, col_right = st.columns([1, 1])
         
-        if not stock_ranking.empty:
-            row = stock_ranking.iloc[0]
+        with col_left:
+            st.header("🤖 AI 推薦理由")
             
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                score = row.get('final_score', 0)
-                st.metric("綜合評分", f"{score:.3f}", help="AI 模型綜合評分，越高表示潛力越大")
-            with col2:
-                prob = row.get('model_prob', 0)
-                st.metric("AI 預測勝率", f"{prob*100:.1f}%", help="未來 10 天正報酬的機率")  
-            with col3:
-                rank = ranking_df[ranking_df['stock_id'] == str(stock_id)].index[0] + 1
-                st.metric("排名", f"#{rank}", help="在今日所有股票中的排名")
-            
-            st.markdown("### 🔍 關鍵訊號解析")
-            
-            reasons = row.get('reasons', '')
-            if reasons and '| AI:' in reasons:
-                ai_part = reasons.split('| AI:')[1].strip()
-                features = ai_part.split()
+            if not stock_ranking.empty:
+                row = stock_ranking.iloc[0]
                 
-                # Parse and explain each signal
-                explanations = {
-                    'volume_ratio_20d': {
-                        'name': '📊 20日量能比',
-                        'positive': '成交量明顯放大，資金開始關注',
-                        'negative': '成交量萎縮，市場觀望氣氛濃厚'
-                    },
-                    'bb_width': {
-                        'name': '📏 布林通道寬度',
-                        'positive': '盤整後即將突破，波動度增加',
-                        'negative': '處於盤整狀態，等待方向明朗'
-                    },
-                    'macd': {
-                        'name': '📈 MACD 動能',
-                        'positive': 'MACD 出現黃金交叉，短期趨勢轉強',
-                        'negative': 'MACD 死亡交叉，短期趨勢轉弱'
-                    },
-                    'macd_signal': {
-                        'name': '📊 MACD 訊號',
-                        'positive': 'MACD 訊號線向上，動能增強',
-                        'negative': 'MACD 訊號線向下，動能減弱'
-                    },
-                    'd': {
-                        'name': '📉 KD-D 值',
-                        'positive': 'KD 指標向上，短期有支撐',
-                        'negative': 'KD 指標向下，短期承壓'
-                    },
-                    'k': {
-                        'name': '📈 KD-K 值',
-                        'positive': 'KD-K 值向上，買盤進場',
-                        'negative': 'KD-K 值向下，賣壓出現'
-                    },
-                    'pct_from_low_60d': {
-                        'name': '📌 相對 60 日低點',
-                        'positive': '股價接近 60 日低點，潛在反彈機會',
-                        'negative': '股價遠離 60 日低點'
-                    },
-                    'pct_from_high_60d': {
-                        'name': '📌 相對 60 日高點',
-                        'positive': '股價接近 60 日高點，突破在即',
-                        'negative': '股價遠離 60 日高點'
-                    },
-                    'ma20': {
-                        'name': '📊 20日均線',
-                        'positive': '站上 20 日均線，中期趨勢轉多',
-                        'negative': '跌破 20 日均線，中期趨勢轉空'
-                    },
-                    'rsi': {
-                        'name': '📊 RSI 強弱指標',
-                        'positive': 'RSI 向上，買盤力道增強',
-                        'negative': 'RSI 向下，賣壓增加'
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    score = row.get('final_score', 0)
+                    st.metric("綜合評分", f"{score:.3f}", help="AI 模型綜合評分，越高表示潛力越大")
+                with col2:
+                    prob = row.get('model_prob', 0)
+                    st.metric("AI 預測勝率", f"{prob*100:.1f}%", help="未來 10 天正報酬的機率")  
+                with col3:
+                    rank = ranking_df[ranking_df['stock_id'] == str(stock_id)].index[0] + 1
+                    st.metric("排名", f"#{rank}", help="在今日所有股票中的排名")
+                
+                st.markdown("### 🔍 關鍵訊號解析")
+                
+                reasons = row.get('reasons', '')
+                if reasons and '| AI:' in reasons:
+                    ai_part = reasons.split('| AI:')[1].strip()
+                    features = ai_part.split()
+                    
+                    # Parse and explain each signal
+                    explanations = {
+                        'volume_ratio_20d': {
+                            'name': '📊 20日量能比',
+                            'positive': '成交量明顯放大，資金開始關注',
+                            'negative': '成交量萎縮，市場觀望氣氛濃厚'
+                        },
+                        'bb_width': {
+                            'name': '📏 布林通道寬度',
+                            'positive': '盤整後即將突破，波動度增加',
+                            'negative': '處於盤整狀態，等待方向明朗'
+                        },
+                        'macd': {
+                            'name': '📈 MACD 動能',
+                            'positive': 'MACD 出現黃金交叉，短期趨勢轉強',
+                            'negative': 'MACD 死亡交叉，短期趨勢轉弱'
+                        },
+                        'macd_signal': {
+                            'name': '📊 MACD 訊號',
+                            'positive': 'MACD 訊號線向上，動能增強',
+                            'negative': 'MACD 訊號線向下，動能減弱'
+                        },
+                        'd': {
+                            'name': '📉 KD-D 值',
+                            'positive': 'KD 指標向上，短期有支撐',
+                            'negative': 'KD 指標向下，短期承壓'
+                        },
+                        'k': {
+                            'name': '📈 KD-K 值',
+                            'positive': 'KD-K 值向上，買盤進場',
+                            'negative': 'KD-K 值向下，賣壓出現'
+                        },
+                        'pct_from_low_60d': {
+                            'name': '📌 相對 60 日低點',
+                            'positive': '股價接近 60 日低點，潛在反彈機會',
+                            'negative': '股價遠離 60 日低點'
+                        },
+                        'pct_from_high_60d': {
+                            'name': '📌 相對 60 日高點',
+                            'positive': '股價接近 60 日高點，突破在即',
+                            'negative': '股價遠離 60 日高點'
+                        },
+                        'ma20': {
+                            'name': '📊 20日均線',
+                            'positive': '站上 20 日均線，中期趨勢轉多',
+                            'negative': '跌破 20 日均線，中期趨勢轉空'
+                        },
+                        'rsi': {
+                            'name': '📊 RSI 強弱指標',
+                            'positive': 'RSI 向上，買盤力道增強',
+                            'negative': 'RSI 向下，賣壓增加'
+                        }
                     }
-                }
-                
-                for feat in features:
-                    if '(' in feat and ')' in feat:
-                        name = feat[:feat.index('(')]
-                        value = feat[feat.index('(')+1:feat.index(')')]
-                        
-                        if name in explanations:
-                            info = explanations[name]
-                            is_positive = value.startswith('+')
+                    
+                    for feat in features:
+                        if '(' in feat and ')' in feat:
+                            name = feat[:feat.index('(')]
+                            value = feat[feat.index('(')+1:feat.index(')')]
                             
-                            if is_positive:
-                                st.success(f"✅ **{info['name']}** _{value}_  \n{info['positive']}")
-                            else:
-                                st.warning(f"⚠️ **{info['name']}** _{value}_  \n{info['negative']}")
-        else:
-            st.info("此股票不在今日 Top 10 推薦清單中")
+                            if name in explanations:
+                                info = explanations[name]
+                                is_positive = value.startswith('+')
+                                
+                                if is_positive:
+                                    st.success(f"✅ **{info['name']}** _{value}_  \n{info['positive']}")
+                                else:
+                                    st.warning(f"⚠️ **{info['name']}** _{value}_  \n{info['negative']}")
+            else:
+                st.info("此股票不在今日 Top 10 推薦清單中")
         
-        st.markdown("---")
-        
-        # ===========================================
-        # Section 2: 目前技術位置分析
-        # ===========================================
-        st.header("📍 目前技術位置")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("收盤價", f"${latest['close']:.2f}")
-        with col2:
-            ma20 = latest.get('ma20', latest['close'])
-            diff_ma20 = ((latest['close'] - ma20) / ma20 * 100) if ma20 > 0 else 0
-            st.metric("MA20", f"${ma20:.2f}", f"{diff_ma20:+.1f}%")
-        with col3:
-            rsi = latest.get('rsi', 50)
-            rsi_status = "超買" if rsi > 70 else ("超賣" if rsi < 30 else "中性")
-            st.metric("RSI", f"{rsi:.1f}", rsi_status)
-        with col4:
-            k_val = latest.get('k', 50)
-            d_val = latest.get('d', 50)
-            kd_status = "黃金交叉" if k_val > d_val else "死亡交叉"
-            st.metric("KD", f"K:{k_val:.1f} D:{d_val:.1f}", kd_status)
-        
-        # Position interpretation
-        st.markdown("### 💡 技術面解讀")
-        
-        # MA20 position
-        if latest['close'] > ma20:
-            st.success("✅ **多頭格局** - 股價站上 20 日均線，中期趨勢偏多")
-        else:
-            st.error("⚠️ **空頭格局** - 股價跌破 20 日均線，中期趨勢偏空")
-        
-        # RSI interpretation
-        if rsi > 70:
-            st.warning("⚠️ **RSI 超買** - 短期漲多，注意回檔風險")
-        elif rsi < 30:
-            st.info("💎 **RSI 超賣** - 短期跌深，可能出現反彈")
-        else:
-            st.info(f"📊 **RSI 中性區** - 目前 RSI {rsi:.1f}，尚未過熱或過冷")
-        
-        # KD interpretation  
-        if k_val > d_val and k_val > 50:
-            st.success("✅ **KD 黃金交叉 + 強勢** - 短期買盤力道強")
-        elif k_val < d_val and k_val < 50:
-            st.error("⚠️ **KD 死亡交叉 + 弱勢** - 短期賣壓較重")
+        with col_right:
+            st.header("📍 目前技術位置")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("收盤價", f"${latest['close']:.2f}")
+            with col2:
+                ma20 = latest.get('ma20', latest['close'])
+                diff_ma20 = ((latest['close'] - ma20) / ma20 * 100) if ma20 > 0 else 0
+                st.metric("MA20", f"${ma20:.2f}", f"{diff_ma20:+.1f}%")
+            
+            col3, col4 = st.columns(2)
+            with col3:
+                rsi = latest.get('rsi', 50)
+                rsi_status = "超買" if rsi > 70 else ("超賣" if rsi < 30 else "中性")
+                st.metric("RSI", f"{rsi:.1f}", rsi_status)
+            with col4:
+                k_val = latest.get('k', 50)
+                d_val = latest.get('d', 50)
+                kd_status = "黃金交叉" if k_val > d_val else "死亡交叉"
+                st.metric("KD", f"K:{k_val:.1f} D:{d_val:.1f}", kd_status)
+            
+            # Position interpretation
+            st.markdown("### 💡 技術面解讀")
+            
+            # MA20 position
+            if latest['close'] > ma20:
+                st.success("✅ **多頭格局** - 股價站上 20 日均線，中期趋勢偏多")
+            else:
+                st.error("⚠️ **空頭格局** - 股價跌破 20 日均線，中期趋勢偏空")
+            
+            # RSI interpretation
+            if rsi > 70:
+                st.warning("⚠️ **RSI 超買** - 短期漲多，注意回檔風險")
+            elif rsi < 30:
+                st.info("💎 **RSI 超賤** - 短期跌深，可能出現反彈")
+            else:
+                st.info(f"📊 **RSI 中性區** - 目前 RSI {rsi:.1f}，尚未過熱或過冷")
+            
+            # KD interpretation  
+            if k_val > d_val and k_val > 50:
+                st.success("✅ **KD 黃金交叉 + 強勢** - 短期買盤力道強")
+            elif k_val < d_val and k_val < 50:
+                st.error("⚠️ **KD 死亡交叉 + 弱勢** - 短期賣壓較重")
+
         
         st.markdown("---")
         
@@ -749,39 +775,173 @@ def show_stock_detail():
         st.markdown("---")
         
         # ===========================================
-        # Section 5: 投資建議（免責聲明）
+        # Section 4.5: 結構化投資說明（移到圖表之後，兩欄式佈局）
         # ===========================================
-        st.header("💡 參考建議")
+        report_path = Path("artifacts/analysis_report.md")
+        if report_path.exists():
+            try:
+                with open(report_path, 'r', encoding='utf-8') as f:
+                    full_report = f.read()
+                
+                # 解析出該股票的報告區塊
+                import re
+                pattern = rf"## 個股：{stock_id}.*?(?=\n---\n|\Z)"
+                match = re.search(pattern, full_report, re.DOTALL)
+                
+                if match:
+                    stock_report = match.group(0)
+                    
+                    # 顯示標題
+                    st.markdown("## 📋 投資說明書")
+                    
+                    # 解析報告的各個區塊
+                    sections = {}
+                    section_pattern = r"### (\d+\)) (.+?)\n(.*?)(?=\n### \d+\)|$)"
+                    for section_match in re.finditer(section_pattern, stock_report, re.DOTALL):
+                        section_num = section_match.group(1)
+                        section_title = section_match.group(2)
+                        section_content = section_match.group(3).strip()
+                        sections[f"{section_num} {section_title}"] = section_content
+                    
+                    # 如果成功解析出區塊，用兩欄顯示
+                    if sections:
+                        # 第一行：TL;DR + 交易建議
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            if "2) TL;DR（三行結論）" in sections:
+                                st.markdown("### 2) TL;DR（三行結論）")
+                                st.markdown(sections["2) TL;DR（三行結論）"])
+                        
+                        with col2:
+                            if "3) 交易建議（數字版）" in sections:
+                                st.markdown("### 3) 交易建議（數字版）")
+                                st.markdown(sections["3) 交易建議（數字版）"])
+                        
+                        st.markdown("---")
+                        
+                        # 第二行：買入理由 + 風險
+                        col3, col4 = st.columns(2)
+                        
+                        with col3:
+                            if "4) 買入理由（數字＋白話）" in sections:
+                                st.markdown("### 4) 買入理由（數字＋白話）")
+                                st.markdown(sections["4) 買入理由（數字＋白話）"])
+                        
+                        with col4:
+                            if "5) 觀察與否決條件" in sections:
+                                st.markdown("### 5) 觀察與否決條件")
+                                st.markdown(sections["5) 觀察與否決條件"])
+                        
+                        st.markdown("---")
+                        
+                        # 第三行：數據快照（全寬）
+                        if "6) 數據快照" in sections:
+                            st.markdown("### 6) 數據快照")
+                            st.markdown(sections["6) 數據快照"])
+                        
+                        # 教學角落不顯示（已整合到下方的參考建議）
+                    else:
+                        # 如果解析失敗，直接顯示原始報告
+                        st.markdown(stock_report, unsafe_allow_html=True)
+                        
+            except Exception as e:
+                st.warning(f"無法載入報告: {e}")
         
-        st.info("""
-        **📌 如何使用這些資訊？**
+        st.markdown("---")
         
-        1. **AI 推薦理由** - 了解為什麼 AI 選中這檔股票
-        2. **技術位置** - 判斷目前是高點還是低點
-        3. **K 線圖** - 觀察價格趨勢與支撐壓力
-        4. **MACD/KD** - 確認動能方向
-        
-        **⚠️ 建議持有期：10 天**（根據回測數據）
-        
-        **✅ 適合進場時機**：
-        - AI 評分 > 0.45
-        - 股價站上 MA20
-        - RSI 未超買 (< 70)
-        - KD 黃金交叉
-        
-        **❌ 不建議進場**：
-        - RSI 超買 (> 80)
-        - 股價跌破 MA20 且 KD 死亡交叉
-        - 成交量萎縮
-        """)
-        
-        st.warning("""
-        **⚠️ 投資警語**
-        
-        本系統僅供參考，不構成投資建議。
-        投資有風險，請謹慎評估自身風險承受能力。
-        過去績效不代表未來表現。
-        """)
+        # ===========================================
+        # Section 5: 投資指南（整合版）
+        # ===========================================
+        with st.expander("📚 投資指南（點擊展開）", expanded=False):
+            st.markdown("### 🎯 完整投資決策流程")
+            
+            st.markdown("""
+            #### 第一步：確認進場條件
+            
+            在考慮買入前，請確認以下**四個核心條件**：
+            
+            | 指標 | 條件 | 說明 |
+            |------|------|------|
+            | 🤖 AI 評分 | > 0.45 | 模型預測未來 10 天正報酬機率超過 45% |
+            | 📊 均線位置 | 站上 MA20 | 股價在 20 日均線之上，中期趨勢偏多 |
+            | 📈 RSI 指標 | < 70 | 尚未進入超買區，仍有上漲空間 |
+            | 🔄 KD 動能 | 黃金交叉 | K 值向上穿越 D 值，短期買盤增強 |
+            
+            ✅ **建議**：至少符合 **3 項以上**再考慮進場，全部符合勝率最高。
+            
+            ---
+            
+            #### 第二步：辨識警示訊號
+            
+            以下情況**不建議進場**，或應考慮停損出場：
+            
+            - 🚫 **RSI > 80**：嚴重超買，短線回檔風險極高
+            - 🚫 **跌破 MA20 + KD 死亡交叉**：多空轉換，趨勢轉弱
+            - 🚫 **成交量萎縮**：缺乏資金動能，上漲不健康
+            
+            ---
+            
+            #### 第三步：理解關鍵技術訊號
+            
+            以下是常見技術訊號的**白話解釋**：
+            
+            """)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("""
+                **價格突破類**
+                - **突破 20 日高**  
+                  最近一個月的最高價被超過，通常會有「慣性續漲」效應
+                
+                - **站上布林中軌**  
+                  回到多頭範圍，若能站穩則趨勢轉強
+                
+                **均線交叉類**
+                - **MA5 上穿 MA20**  
+                  短期趨勢翻多，若 MA20 沒下彎，勝率更好
+                
+                - **MACD 黃金交叉**  
+                  動能由負轉正,買盤力道增強
+                """)
+            
+            with col2:
+                st.markdown("""
+                **量能籌碼類**
+                - **量能放大**  
+                  上漲有人追價，比只有價格漲更健康
+                
+                - **法人連買**  
+                  大資金偏多，通常有延續性（但也要看大盤）
+                
+                **超買超賣類**
+                - **RSI > 70**  
+                  超買，短線可能回檔
+                
+                - **RSI < 30**  
+                  超賣，可能出現反彈機會
+                """)
+            
+            st.markdown("---")
+            
+            st.markdown("""
+            #### 第四步：執行紀律與風險管理
+            
+            - 💰 **分批建倉**：不要一次投入全部資金，建議分 2-3 次買入
+            - ⏱️ **建議持有期**：10 天（根據回測數據）
+            - 🛡️ **停損設定**：跌破 MA20 或虧損超過 5-8% 應考慮停損
+            - 📊 **倉位控制**：單一股票不超過總資金的 10-15%
+            
+            """)
+            
+            st.warning("""
+            **⚠️ 投資警語**
+            
+            本系統僅供參考，不構成投資建議。投資有風險，請謹慎評估自身風險承受能力。
+            過去績效不代表未來表現。建議搭配基本面分析與市場環境判斷。
+            """)
         
     except Exception as e:
         st.error(f"載入資料時發生錯誤: {e}")
