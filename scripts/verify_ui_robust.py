@@ -2,10 +2,10 @@ from playwright.sync_api import sync_playwright
 import sys
 
 def verify_ui():
-    print("🚀 Starting robust UI verification (VISIBLE MODE)...")
+    print("🚀 Starting robust UI verification (HEADLESS MODE)...")
     with sync_playwright() as p:
-        # headless=False 讓瀏覽器視窗跳出來，slow_mo=1000 讓動作變慢以便觀察
-        browser = p.chromium.launch(headless=False, slow_mo=1000)
+        # headless=True for automated testing
+        browser = p.chromium.launch(headless=True)
         try:
             page = browser.new_page()
             
@@ -55,12 +55,18 @@ def verify_ui():
             print("⏳ Waiting for detail page content...")
             # 等待關鍵字 "推薦理由" 或 "個股分析"
             try:
-                page.wait_for_selector("text=推薦理由", timeout=20000)
-                print("✅ Found '推薦理由'.")
+                page.wait_for_selector("text=TL;DR", timeout=30000)
+                print("✅ Found 'TL;DR' (Markdown Report Integrated).")
             except:
                  # Fallback check
-                 page.wait_for_selector("text=個股分析", timeout=5000)
-                 print("✅ Found '個股分析'.")
+                 print("⚠️ 'TL;DR' not found. Checking fallback...")
+                 try:
+                     page.wait_for_selector("text=詳細分析報告", timeout=5000)
+                     print("✅ Found header '詳細分析報告'.")
+                 except:
+                     print("❌ Detail page content not found. Dumping content:")
+                     print(page.inner_text("body")[:1000])
+                     raise Exception("Detail page content check failed.")
 
             page.screenshot(path="artifacts/verification_detail_page.png")
             print("📸 Detail page screenshot saved.")

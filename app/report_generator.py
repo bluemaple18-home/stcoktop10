@@ -384,4 +384,30 @@ class StockReportGenerator:
         }
 
 if __name__ == "__main__":
-    print("Report Generator v3 (User Template) Loaded.")
+    # 自動尋找最新的 ranking csv
+    import glob
+    import os
+    
+    ranking_files = glob.glob("artifacts/ranking_*.csv")
+    if not ranking_files:
+        print("❌ 找不到排名檔案 (artifacts/ranking_*.csv)")
+        exit(1)
+        
+    # 取最新的檔案
+    latest_ranking = max(ranking_files, key=os.path.getctime)
+    print(f"📂 讀取排名檔案: {latest_ranking}")
+    
+    ranked_df = pd.read_csv(latest_ranking, dtype={'stock_id': str})
+    
+    # 讀取特徵資料
+    features_path = "data/clean/features.parquet"
+    if not Path(features_path).exists():
+        print(f"❌ 找不到特徵檔案 ({features_path})")
+        exit(1)
+        
+    print(f"📂 讀取特徵資料: {features_path}")
+    features_df = pd.read_parquet(features_path)
+    
+    # 執行生成
+    generator = StockReportGenerator()
+    generator.generate_report(ranked_df, features_df)

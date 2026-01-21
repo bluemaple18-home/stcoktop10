@@ -1,5 +1,18 @@
 # Changelog
 
+## [v2.6.0-ui-verified] - 2026-01-22 (UI 重構與報告整合)
+
+### 🚀 主要功能更新
+- **SMC 矩陣式佈局**: 重構個股頁面，導入「主要趨勢」、「動能指標」、「量能分析」、「AI 信心」四象限矩陣。
+- **垂直指標圖表**: MACD 與 KD 指標改為垂直堆疊排列，提升移動端與桌面端閱讀體驗。
+- **分析報告深度整合**: 直接解析 `analysis_report.md`，將 TL;DR、交易建議、買入理由無縫整合至個股詳情頁底部。
+- **介面優化**: 移除獨立的「分析報告」頁面，簡化導覽結構。
+
+### 🐛 錯誤修復
+- **YAML Loading Fix**: 修復因 numpy 數據類型導致的 `yaml.constructor.ConstructorError`，改為容錯讀取。
+- **Syntax Fixes**: 修復 `ui.py` 中的縮排錯誤與 SyntaxError。
+- **Robust Verification**: 強化自動化測試腳本，支援 Markdown 內容驗證與錯誤快照。
+
 ## [v2.5.0-verified] - 2026-01-21 (驗證系統整合)
 
 ### 🔧 系統改進

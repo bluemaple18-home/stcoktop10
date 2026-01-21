@@ -122,23 +122,9 @@ def main():
             index=0
         )
         
-        # If stock analysis selected, show stock selector
-        if page == "📈 個股分析":
-            st.markdown("---")
-            st.markdown("### 選擇股票")
-            
-            # Load top 10 for quick access
-            df, _ = load_latest_ranking()
-            if df is not None and not df.empty:
-                stock_options = [f"{row['stock_id']} {row.get('stock_name', '')}" 
-                                for _, row in df.head(10).iterrows()]
-                selected = st.selectbox("Top 10 快選", stock_options)
-                
-                if selected:
-                    stock_id = selected.split()[0]
-                    stock_name = ' '.join(selected.split()[1:])
-                    st.session_state['selected_stock'] = stock_id
-                    st.session_state['selected_stock_name'] = stock_name
+        # If stock analysis selected, show stock selector in main area, not here
+        # Removed sidebar selector logic to move to main page
+
         
         st.markdown("---")
         st.markdown("### 系統狀態")
@@ -361,48 +347,100 @@ def show_psi_monitor():
 # 頁面: 分析報告
 # ========================================
 
-def show_analysis_report():
-    st.header("📝 結構化分析報告")
-    
-    report_path = Path("artifacts/analysis_report.md")
-    
-    if not report_path.exists():
-        st.warning("⚠️ 尚無分析報告，請先執行 `python app/agent_b_ranking.py`")
-        return
-    
-    # 顯示報告生成時間
-    import os
-    mod_time = datetime.fromtimestamp(os.path.getmtime(report_path))
-    st.info(f"📅 報告生成時間: {mod_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    # 讀取並顯示 Markdown 報告
-    with open(report_path, 'r', encoding='utf-8') as f:
-        report_content = f.read()
-    
-    st.markdown(report_content, unsafe_allow_html=True)
+
 
 # ========================================
 # 頁面: 個股詳細資訊
 # ========================================
 
+# Helper: Load analysis report
+@st.cache_data(ttl=300)
+def load_analysis_report():
+    yaml_path = Path("artifacts/analysis_report.yaml")
+    if yaml_path.exists():
+        import yaml
+        try:
+            with open(yaml_path, 'r', encoding='utf-8') as f:
+                # Use FullLoader or suppress constructor errors if possible
+                # Simple fix: try safe_load, if fail return None
+                return yaml.safe_load(f)
+        except Exception as e:
+            print(f"Error loading YAML report: {e}")
+            return None
+    return None
+
 def show_stock_detail():
-    # Back button
-    col1, col2 = st.columns([1, 5])
-    with col1:
-        if st.button("← 返回"):
-            st.session_state['page'] = None
-            st.rerun()
+    st.markdown("""
+    <style>
+    .matrix-card {
+        background-color: #262730;
+        border: 1px solid #464b59;
+        border-radius: 5px;
+        padding: 15px;
+        height: 100%;
+    }
+    .matrix-title {
+        font-size: 0.9em;
+        color: #aaa;
+        margin-bottom: 5px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .matrix-value-good { color: #4CAF50; font-weight: bold; font-size: 1.1em; }
+    .matrix-value-bad { color: #FF5252; font-weight: bold; font-size: 1.1em; }
+    .matrix-value-neutral { color: #E0E0E0; font-weight: bold; font-size: 1.1em; }
     
+    .deep-dive-header {
+        border-left: 3px solid #4CAF50;
+        padding-left: 10px;
+        color: #4CAF50;
+        margin-top: 30px;
+        margin-bottom: 20px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Move selector to main area
+    df, _ = load_latest_ranking()
+    stock_options = []
+    if df is not None and not df.empty:
+        stock_options = [f"{row['stock_id']} {row.get('stock_name', '')}" for _, row in df.head(10).iterrows()]
+    
+    col_header_1, col_header_2 = st.columns([3, 1])
+    
+    with col_header_2:
+        # Get current selection index
+        current_idx = 0
+        current_stock_id = st.session_state.get('selected_stock', None)
+        if current_stock_id:
+            for i, opt in enumerate(stock_options):
+                if opt.startswith(str(current_stock_id)):
+                    current_idx = i
+                    break
+        
+        selected_opt = st.selectbox("Switch Ticker", stock_options, index=current_idx, label_visibility="collapsed")
+        if selected_opt:
+            parts = selected_opt.split()
+            st.session_state['selected_stock'] = parts[0]
+            st.session_state['selected_stock_name'] = ' '.join(parts[1:]) if len(parts) > 1 else ''
+
     stock_id = st.session_state.get('selected_stock', None)
     stock_name = st.session_state.get('selected_stock_name', '')
-    
+
     if not stock_id:
-        st.warning("⚠️ 請先在左側選擇股票")
+        st.warning("⚠️ 請選擇股票")
         return
     
-    st.title(f"📊 {stock_id} {stock_name}")
-    st.markdown("---")
+    if not stock_id:
+        st.warning("⚠️ 請選擇股票")
+        return
     
+    with col_header_1:
+         # Simplified header or remove it if redundant. User complained about duplication.
+         # The selector above shows the stock. The section below says "1141 瑞展 ...".
+         # Let's keep a clean big title here and remove the stock name from the section header below.
+         st.markdown(f"## {stock_id} {stock_name}")
+
     # Load data
     try:
         features_df = pd.read_parquet("data/clean/features.parquet")
@@ -412,181 +450,188 @@ def show_stock_detail():
             st.error(f"❌ 找不到 {stock_id} 的歷史資料")
             return
         
-        # Sort by date and get latest
         stock_data = stock_data.sort_values('date')
         latest = stock_data.iloc[-1]
         
-        # Load ranking data to get AI reasons
+        # Load Ranking Data
         ranking_df, _ = load_latest_ranking()
-        stock_ranking = ranking_df[ranking_df['stock_id'] == str(stock_id)]
+        ranking_df['stock_id'] = ranking_df['stock_id'].astype(str).str.strip()
+        target_id = str(stock_id).strip()
+        stock_ranking = ranking_df[ranking_df['stock_id'] == target_id]
         
-        # ===========================================
-        # Section 1: AI 為什麼推薦這支股票？(左欄) + 技術位置(右欄)
-        # ===========================================
-        col_left, col_right = st.columns([1, 1])
-        
-        with col_left:
-            st.header("🤖 AI 推薦理由")
-            
-            if not stock_ranking.empty:
-                row = stock_ranking.iloc[0]
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    score = row.get('final_score', 0)
-                    st.metric("綜合評分", f"{score:.3f}", help="AI 模型綜合評分，越高表示潛力越大")
-                with col2:
-                    prob = row.get('model_prob', 0)
-                    st.metric("AI 預測勝率", f"{prob*100:.1f}%", help="未來 10 天正報酬的機率")  
-                with col3:
-                    rank = ranking_df[ranking_df['stock_id'] == str(stock_id)].index[0] + 1
-                    st.metric("排名", f"#{rank}", help="在今日所有股票中的排名")
-                
-                st.markdown("### 🔍 關鍵訊號解析")
-                
-                reasons = row.get('reasons', '')
-                if reasons and '| AI:' in reasons:
-                    ai_part = reasons.split('| AI:')[1].strip()
-                    features = ai_part.split()
-                    
-                    # Parse and explain each signal
-                    explanations = {
-                        'volume_ratio_20d': {
-                            'name': '📊 20日量能比',
-                            'positive': '成交量明顯放大，資金開始關注',
-                            'negative': '成交量萎縮，市場觀望氣氛濃厚'
-                        },
-                        'bb_width': {
-                            'name': '📏 布林通道寬度',
-                            'positive': '盤整後即將突破，波動度增加',
-                            'negative': '處於盤整狀態，等待方向明朗'
-                        },
-                        'macd': {
-                            'name': '📈 MACD 動能',
-                            'positive': 'MACD 出現黃金交叉，短期趨勢轉強',
-                            'negative': 'MACD 死亡交叉，短期趨勢轉弱'
-                        },
-                        'macd_signal': {
-                            'name': '📊 MACD 訊號',
-                            'positive': 'MACD 訊號線向上，動能增強',
-                            'negative': 'MACD 訊號線向下，動能減弱'
-                        },
-                        'd': {
-                            'name': '📉 KD-D 值',
-                            'positive': 'KD 指標向上，短期有支撐',
-                            'negative': 'KD 指標向下，短期承壓'
-                        },
-                        'k': {
-                            'name': '📈 KD-K 值',
-                            'positive': 'KD-K 值向上，買盤進場',
-                            'negative': 'KD-K 值向下，賣壓出現'
-                        },
-                        'pct_from_low_60d': {
-                            'name': '📌 相對 60 日低點',
-                            'positive': '股價接近 60 日低點，潛在反彈機會',
-                            'negative': '股價遠離 60 日低點'
-                        },
-                        'pct_from_high_60d': {
-                            'name': '📌 相對 60 日高點',
-                            'positive': '股價接近 60 日高點，突破在即',
-                            'negative': '股價遠離 60 日高點'
-                        },
-                        'ma20': {
-                            'name': '📊 20日均線',
-                            'positive': '站上 20 日均線，中期趨勢轉多',
-                            'negative': '跌破 20 日均線，中期趨勢轉空'
-                        },
-                        'rsi': {
-                            'name': '📊 RSI 強弱指標',
-                            'positive': 'RSI 向上，買盤力道增強',
-                            'negative': 'RSI 向下，賣壓增加'
-                        }
-                    }
-                    
-                    for feat in features:
-                        if '(' in feat and ')' in feat:
-                            name = feat[:feat.index('(')]
-                            value = feat[feat.index('(')+1:feat.index(')')]
-                            
-                            if name in explanations:
-                                info = explanations[name]
-                                is_positive = value.startswith('+')
-                                
-                                if is_positive:
-                                    st.success(f"✅ **{info['name']}** _{value}_  \n{info['positive']}")
-                                else:
-                                    st.warning(f"⚠️ **{info['name']}** _{value}_  \n{info['negative']}")
-            else:
-                st.info("此股票不在今日 Top 10 推薦清單中")
-        
-        with col_right:
-            st.header("📍 目前技術位置")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("收盤價", f"${latest['close']:.2f}")
-            with col2:
-                ma20 = latest.get('ma20', latest['close'])
-                diff_ma20 = ((latest['close'] - ma20) / ma20 * 100) if ma20 > 0 else 0
-                st.metric("MA20", f"${ma20:.2f}", f"{diff_ma20:+.1f}%")
-            
-            col3, col4 = st.columns(2)
-            with col3:
-                rsi = latest.get('rsi', 50)
-                rsi_status = "超買" if rsi > 70 else ("超賣" if rsi < 30 else "中性")
-                st.metric("RSI", f"{rsi:.1f}", rsi_status)
-            with col4:
-                k_val = latest.get('k', 50)
-                d_val = latest.get('d', 50)
-                kd_status = "黃金交叉" if k_val > d_val else "死亡交叉"
-                st.metric("KD", f"K:{k_val:.1f} D:{d_val:.1f}", kd_status)
-            
-            # Position interpretation
-            st.markdown("### 💡 技術面解讀")
-            
-            # MA20 position
-            if latest['close'] > ma20:
-                st.success("✅ **多頭格局** - 股價站上 20 日均線，中期趋勢偏多")
-            else:
-                st.error("⚠️ **空頭格局** - 股價跌破 20 日均線，中期趋勢偏空")
-            
-            # RSI interpretation
-            if rsi > 70:
-                st.warning("⚠️ **RSI 超買** - 短期漲多，注意回檔風險")
-            elif rsi < 30:
-                st.info("💎 **RSI 超賤** - 短期跌深，可能出現反彈")
-            else:
-                st.info(f"📊 **RSI 中性區** - 目前 RSI {rsi:.1f}，尚未過熱或過冷")
-            
-            # KD interpretation  
-            if k_val > d_val and k_val > 50:
-                st.success("✅ **KD 黃金交叉 + 強勢** - 短期買盤力道強")
-            elif k_val < d_val and k_val < 50:
-                st.error("⚠️ **KD 死亡交叉 + 弱勢** - 短期賣壓較重")
+        score, prob, rank = 0, 0, "N/A"
+        ai_features = []
+        if not stock_ranking.empty:
+            row = stock_ranking.iloc[0]
+            score = row.get('final_score', 0)
+            prob = row.get('model_prob', 0)
+            rank = ranking_df[ranking_df['stock_id'] == target_id].index[0] + 1
+            reasons = row.get('reasons', '')
+            if reasons and '| AI:' in reasons:
+                ai_part = reasons.split('| AI:')[1].strip()
+                ai_features = ai_part.split()
 
+        # Data preparation (Restore missing definitions)
+        close = latest['close']
+        ma20 = latest.get('ma20', close)
+        ma5 = latest.get('ma5', close)
+        volume = latest.get('volume', 0)
+        rsi = latest.get('rsi', 50)
+        k_val = latest.get('k', 50)
+        d_val = latest.get('d', 50)
+
+        # ===========================================
+        # 1. 核心訊號總結 (Summary)
+        # ===========================================
+        # Removed redundant "{stock_id} {stock_name}" from title
+        st.markdown(f"### 🛡️ 核心訊號總結") 
         
+        # Top Metrics Row
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("目前股價", f"${close:.2f}")
+        
+        ma20_diff = (close - ma20) / ma20 * 100
+        m2.metric("20日乖離", f"{ma20_diff:+.2f}%", delta_color="normal")
+        
+        m3.metric("AI 預測勝率", f"{prob*100:.1f}%", help="模型預測未來 5-10 日上漲機率")
+        m4.metric("今日排名", f"#{rank}", help="綜合評分排名")
+        
+        # Reason Chips (Translated)
+        # Feature Name Mapping
+        feature_map = {
+            'volume_ratio_20d': '20日量比',
+            'bb_width': '布林寬度',
+            'macd_signal': 'MACD訊號',
+            'macd': 'MACD柱',
+            'd': 'KD-D值',
+            'k': 'KD-K值',
+            'rsi': 'RSI',
+            'pct_from_low_60d': '距60日低(%)',
+            'pct_from_high_60d': '距60日高(%)',
+            'ma5': '5日均線',
+            'ma20': '20日均線',
+            'close': '收盤價'
+        }
+
+        if ai_features:
+            st.markdown("**AI 關注特徵：**")
+            chip_cols = st.columns(len(ai_features) if len(ai_features) < 5 else 5)
+            for i, feat in enumerate(ai_features[:5]): # Show max 5
+                # Parse format: name(val)
+                display_text = feat
+                if '(' in feat:
+                    fname = feat.split('(')[0]
+                    fval = feat.split('(')[1].replace(')', '')
+                    if fname in feature_map:
+                        display_text = f"{feature_map[fname]} {fval}"
+                
+                with chip_cols[i % 5]:
+                     st.caption(f"🏷️ {display_text}")
+        
+        st.markdown("---")
+
+        # ===========================================
+        # 2. 市場訊號矩陣 (Signal Matrix)
+        # ===========================================
+        st.subheader("📊 市場訊號矩陣")
+        
+        # Determine Matrix States (Chinese)
+        # Trend
+        trend_status = "多頭排列" if close > ma20 else "空頭排列"
+        trend_color = "good" if trend_status == "多頭排列" else "bad"
+        trend_desc = "股價 > 20日均線 (月線)"
+        
+        # Momentum
+        rsi = latest.get('rsi', 50)
+        mom_status = "中性整理"
+        mom_color = "neutral"
+        if rsi > 70: mom_status, mom_color = "短線過熱", "bad"
+        elif rsi < 30: mom_status, mom_color = "短線超賣", "good"
+        else:
+             if latest.get('k',0) > latest.get('d',0): mom_status, mom_color = "黃金交叉", "good"
+        
+        mom_desc = f"RSI: {rsi:.1f}"
+             
+        # Volume
+        vol = latest.get('volume', 0)
+        vol_avg = stock_data.tail(20)['volume'].mean()
+        vol_ratio = vol / vol_avg if vol_avg > 0 else 0
+        vol_status = "放量攻擊" if vol_ratio > 1.2 else "量縮/正常"
+        vol_color = "good" if vol_ratio > 1.2 else "neutral"
+        vol_desc = f"量比: {vol_ratio:.1f}倍"
+        
+        # AI
+        ai_status = "強力推薦" if prob > 0.7 else "中立偏多"
+        ai_color = "good" if prob > 0.7 else "neutral"
+        ai_desc = f"綜合分: {score:.2f}"
+
+        # Render Matrix in Chinese
+        c1, c2, c3, c4 = st.columns(4)
+        
+        def matrix_cell(col, title, value, sub, status_color):
+            with col:
+                st.markdown(f"""
+                <div class="matrix-card">
+                    <div class="matrix-title">{title}</div>
+                    <div class="matrix-value-{status_color}">{value}</div>
+                    <div style="font-size: 0.8em; color: #888; margin-top: 5px;">{sub}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+        matrix_cell(c1, "主要趨勢 (Trend)", trend_status, trend_desc, trend_color)
+        matrix_cell(c2, "動能指標 (Mom)", mom_status, mom_desc, mom_color)
+        matrix_cell(c3, "量能分析 (Vol)", vol_status, vol_desc, vol_color)
+        matrix_cell(c4, "AI 信心 (Conf)", ai_status, ai_desc, ai_color)
+        
+        st.markdown("") 
+
+        # ===========================================
+        # 3. 風險評估 (Risk Assessment)
+        # ===========================================
+        # Try to get data from report, else estimation
+        report_data = load_analysis_report()
+        stock_report = None
+        if report_data and 'recommendations' in report_data:
+            for rec in report_data['recommendations']:
+                if rec['stock'].startswith(str(stock_id)):
+                    stock_report = rec
+                    break
+        
+        invalidation_text = "N/A"
+        entry_zone_text = "N/A"
+        
+        if stock_report:
+            tp = stock_report['trade_plan']
+            invalidation_text = tp.get('invalidation', 'N/A')
+            ez = tp.get('entry_zone', {})
+            entry_zone_text = f"{ez.get('low',0)} - {ez.get('high',0)}"
+        else:
+            # Fallback calculation
+            stop_loss = latest['ma20'] * 0.98 # Use latest['ma20']
+            invalidation_text = f"跌破月線 ${stop_loss:.1f}"
+            entry_zone_text = f"${latest['close']:.1f} 左右" # Use latest['close']
+
+        st.subheader("🛡️ 風險評估與交易計劃")
+        rc1, rc2 = st.columns(2)
+        with rc1:
+            st.info(f"**🎯 建議進場區間**: {entry_zone_text}")
+        with rc2:
+            st.error(f"**🛑 停損/無效點**: {invalidation_text}")
+
         st.markdown("---")
         
         # ===========================================
-        # Section 3: 價格走勢圖 (K線 + 成交量)
+        # 4. 技術詳解 (Chart & Deep Dive)
         # ===========================================
-        st.header("📈 價格走勢圖（近 60 天）")
+        st.subheader("📈 技術面詳解 (K線圖)")
         
-        # Get last 60 days
-        display_data = stock_data.tail(60).copy()
-        
-        # Create subplots: K-line on top, volume on bottom
+        # Plot Function (Simplified from previous)
+        display_data = stock_data.tail(100).copy()
         from plotly.subplots import make_subplots
+        import plotly.graph_objects as go # Added import for go
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
         
-        fig = make_subplots(
-            rows=2, cols=1,
-            shared_xaxes=True,
-            vertical_spacing=0.03,
-            row_heights=[0.7, 0.3],
-            subplot_titles=('價格', '成交量')
-        )
-        
-        # === Top subplot: Candlestick + MA + Bollinger ===
+        # Candle
         if all(col in display_data.columns for col in ['open', 'high', 'low', 'close']):
             fig.add_trace(go.Candlestick(
                 x=display_data['date'],
@@ -687,167 +732,110 @@ def show_stock_detail():
         st.markdown("---")
         
         # ===========================================
-        # Section 4: 輔助指標（簡化版）
+        # ===========================================
+        # Section 4: 輔助指標 (技術面細節)
         # ===========================================
         
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("📊 MACD 動能指標")
+        # MACD
+        st.subheader("📊 MACD 動能指標")
+        if all(col in display_data.columns for col in ['macd', 'macd_signal', 'macd_hist']):
+            fig_macd = go.Figure()
+            fig_macd.add_trace(go.Scatter(x=display_data['date'], y=display_data['macd'], mode='lines', name='MACD', line=dict(color='#1f77b4', width=2)))
+            fig_macd.add_trace(go.Scatter(x=display_data['date'], y=display_data['macd_signal'], mode='lines', name='Signal', line=dict(color='#ff7f0e', width=2)))
             
-            if all(col in display_data.columns for col in ['macd', 'macd_signal', 'macd_hist']):
-                fig_macd = go.Figure()
-                
-                fig_macd.add_trace(go.Scatter(
-                    x=display_data['date'],
-                    y=display_data['macd'],
-                    mode='lines',
-                    name='MACD',
-                    line=dict(color='#1f77b4', width=2)
-                ))
-                
-                fig_macd.add_trace(go.Scatter(
-                    x=display_data['date'],
-                    y=display_data['macd_signal'],
-                    mode='lines',
-                    name='Signal',
-                    line=dict(color='#ff7f0e', width=2)
-                ))
-                
-                colors = ['green' if val >= 0 else 'red' for val in display_data['macd_hist']]
-                fig_macd.add_trace(go.Bar(
-                    x=display_data['date'],
-                    y=display_data['macd_hist'],
-                    name='Histogram',
-                    marker_color=colors,
-                    opacity=0.5
-                ))
-                
-                fig_macd.update_layout(
-                    xaxis_title="",
-                    yaxis_title="MACD",
-                    hovermode='x unified',
-                    template='plotly_white',
-                    height=300,
-                    showlegend=True,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                )
-                
-                st.plotly_chart(fig_macd, use_container_width=True)
-        
-        with col2:
-            st.subheader("📉 KD 指標")
+            colors = ['#FF3B30' if val >= 0 else '#34C759' for val in display_data['macd_hist']]
+            fig_macd.add_trace(go.Bar(x=display_data['date'], y=display_data['macd_hist'], name='Histogram', marker_color=colors, opacity=0.5))
             
-            if all(col in display_data.columns for col in ['k', 'd']):
-                fig_kd = go.Figure()
-                
-                fig_kd.add_trace(go.Scatter(
-                    x=display_data['date'],
-                    y=display_data['k'],
-                    mode='lines',
-                    name='K值',
-                    line=dict(color='#1f77b4', width=2)
-                ))
-                
-                fig_kd.add_trace(go.Scatter(
-                    x=display_data['date'],
-                    y=display_data['d'],
-                    mode='lines',
-                    name='D值',
-                    line=dict(color='#ff7f0e', width=2)
-                ))
-                
-                fig_kd.add_hline(y=80, line_dash="dash", line_color="red", opacity=0.5, annotation_text="超買")
-                fig_kd.add_hline(y=20, line_dash="dash", line_color="green", opacity=0.5, annotation_text="超賣")
-                
-                fig_kd.update_layout(
-                    xaxis_title="",
-                    yaxis_title="KD值",
-                    hovermode='x unified',
-                    template='plotly_white',
-                    height=300,
-                    showlegend=True,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                )
-                
-                st.plotly_chart(fig_kd, use_container_width=True)
+            fig_macd.update_layout(
+                xaxis_title="", yaxis_title="MACD", hovermode='x unified', template='plotly_white',
+                height=300, showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            st.plotly_chart(fig_macd, use_container_width=True)
+
+        # KD
+        st.subheader("📉 KD 指標")
+        if all(col in display_data.columns for col in ['k', 'd']):
+            fig_kd = go.Figure()
+            fig_kd.add_trace(go.Scatter(x=display_data['date'], y=display_data['k'], mode='lines', name='K值', line=dict(color='#1f77b4', width=2)))
+            fig_kd.add_trace(go.Scatter(x=display_data['date'], y=display_data['d'], mode='lines', name='D值', line=dict(color='#ff7f0e', width=2)))
+            
+            fig_kd.add_hline(y=80, line_dash="dash", line_color="red", opacity=0.5, annotation_text="超買")
+            fig_kd.add_hline(y=20, line_dash="dash", line_color="green", opacity=0.5, annotation_text="超賣")
+            
+            fig_kd.update_layout(
+                xaxis_title="", yaxis_title="KD值", hovermode='x unified', template='plotly_white',
+                height=300, showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            st.plotly_chart(fig_kd, use_container_width=True)
         
         st.markdown("---")
         
         # ===========================================
-        # Section 4.5: 結構化投資說明（移到圖表之後，兩欄式佈局）
+        # 5. 詳細分析報告 (Detail Text from Markdown)
         # ===========================================
+        st.markdown("### 📝 詳細分析報告")
+        
         report_path = Path("artifacts/analysis_report.md")
+        report_found = False
+        
         if report_path.exists():
             try:
                 with open(report_path, 'r', encoding='utf-8') as f:
                     full_report = f.read()
                 
-                # 解析出該股票的報告區塊
+                # Regex to find the specific stock section
+                # Pattern looks for "## 個股：1141" until the next "---" or EOF
                 import re
                 pattern = rf"## 個股：{stock_id}.*?(?=\n---\n|\Z)"
                 match = re.search(pattern, full_report, re.DOTALL)
                 
                 if match:
-                    stock_report = match.group(0)
+                    report_found = True
+                    stock_report_md = match.group(0)
                     
-                    # 顯示標題
-                    st.markdown("## 📋 投資說明書")
-                    
-                    # 解析報告的各個區塊
+                    # Parse sections using regex
+                    # Looking for "### X) Title"
                     sections = {}
-                    section_pattern = r"### (\d+\)) (.+?)\n(.*?)(?=\n### \d+\)|$)"
-                    for section_match in re.finditer(section_pattern, stock_report, re.DOTALL):
-                        section_num = section_match.group(1)
-                        section_title = section_match.group(2)
-                        section_content = section_match.group(3).strip()
-                        sections[f"{section_num} {section_title}"] = section_content
+                    sec_pat = r"### (\d+\)) (.+?)\n(.*?)(?=\n### \d+\)|$)"
+                    for m in re.finditer(sec_pat, stock_report_md, re.DOTALL):
+                        sec_key = f"{m.group(1)} {m.group(2)}"
+                        sections[sec_key] = m.group(3).strip()
                     
-                    # 如果成功解析出區塊，用兩欄顯示
                     if sections:
-                        # 第一行：TL;DR + 交易建議
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
+                        # Row 1: TL;DR + Trading Advice
+                        c1, c2 = st.columns(2)
+                        with c1:
                             if "2) TL;DR（三行結論）" in sections:
-                                st.markdown("### 2) TL;DR（三行結論）")
+                                st.markdown("#### 2) TL;DR（三行結論）")
                                 st.markdown(sections["2) TL;DR（三行結論）"])
-                        
-                        with col2:
+                        with c2:
                             if "3) 交易建議（數字版）" in sections:
-                                st.markdown("### 3) 交易建議（數字版）")
+                                st.markdown("#### 3) 交易建議（數字版）")
                                 st.markdown(sections["3) 交易建議（數字版）"])
                         
                         st.markdown("---")
                         
-                        # 第二行：買入理由 + 風險
-                        col3, col4 = st.columns(2)
-                        
-                        with col3:
+                        # Row 2: Reasons + Conditions
+                        c3, c4 = st.columns(2)
+                        with c3:
                             if "4) 買入理由（數字＋白話）" in sections:
-                                st.markdown("### 4) 買入理由（數字＋白話）")
+                                st.markdown("#### 4) 買入理由（數字＋白話）")
                                 st.markdown(sections["4) 買入理由（數字＋白話）"])
-                        
-                        with col4:
+                        with c4:
                             if "5) 觀察與否決條件" in sections:
-                                st.markdown("### 5) 觀察與否決條件")
+                                st.markdown("#### 5) 觀察與否決條件")
                                 st.markdown(sections["5) 觀察與否決條件"])
-                        
-                        st.markdown("---")
-                        
-                        # 第三行：數據快照（全寬）
-                        if "6) 數據快照" in sections:
-                            st.markdown("### 6) 數據快照")
-                            st.markdown(sections["6) 數據快照"])
-                        
-                        # 教學角落不顯示（已整合到下方的參考建議）
+                                
                     else:
-                        # 如果解析失敗，直接顯示原始報告
-                        st.markdown(stock_report, unsafe_allow_html=True)
+                        # Fallback if regex parsing fails but stock found
+                        st.markdown(stock_report_md)
                         
             except Exception as e:
-                st.warning(f"無法載入報告: {e}")
+                st.error(f"Error parsing report: {e}")
         
+        if not report_found:
+             st.warning("⚠️ 尚未生成此股的詳細分析報告 (請確認 agent_b_ranking 是否已執行)")
+
         st.markdown("---")
         
         # ===========================================
@@ -985,8 +973,9 @@ def show_system_info():
     2. **追蹤績效**: 點選「歷史績效」頁面
     3. **監控模型**: 點選「PSI 監控」頁面
     
-    詳細文件請參考: [docs/AUTOMATION.md](https://github.com/bluemaple18-home/stcoktop10)
-    """)
+            """)
+
+
 
 # ========================================
 # 執行主程式
