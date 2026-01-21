@@ -9,12 +9,36 @@ import pickle
 import logging
 import shap
 
+# 新增：報告生成器
+try:
+    from report_generator import StockReportGenerator
+except ImportError:
+    from app.report_generator import StockReportGenerator
+
 # 設定日誌
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class StockRanker:
     """股票排名器 (Advanced版)：融合校準後的模型機率、規則分數與 SHAP 解釋"""
+    
+    # 技術指標中英對照表
+    SIGNAL_TRANSLATIONS = {
+        'break_20d_high': '突破20日新高',
+        'rebound_ma20': '月線支撐反彈',
+        'close_above_bb_mid': '站上布林中軌',
+        'macd_bullish_cross': 'MACD黃金交叉',
+        'gap_up_close_strong': '跳空強勢收紅',
+        'volume_spike': '成交量暴增',
+        'ma5_cross_ma20_up': '5日線突破月線',
+        'rsi_oversold_bounce': 'RSI超賣反彈',
+        'kd_golden_cross': 'KD黃金交叉',
+        'break_60d_high': '突破60日新高',
+        'volume_ma_breakout': '量能突破均量',
+        'bullish_engulfing': '多頭吞噬K線',
+        'hammer': '錘子線型態',
+        'morning_star': '晨星反轉',
+    }
     
     def __init__(self, data_dir: str = "data/clean", model_dir: str = "models",
                  artifact_dir: str = "artifacts", config_path: str = "config/signals.yaml"):
@@ -149,7 +173,9 @@ class StockRanker:
                 df.loc[triggered, 'rule_score'] += weight
                 
                 reason_mask = triggered
-                tag = f"{signal}(+{weight}) " if weight > 0 else f"{signal}({weight}) "
+                # 使用中文翻譯（如有）
+                display_name = self.SIGNAL_TRANSLATIONS.get(signal, signal)
+                tag = f"{display_name}(+{weight}) " if weight > 0 else f"{display_name}({weight}) "
                 
                 if reason_mask.any():
                     df.loc[reason_mask, 'reasons'] = df.loc[reason_mask, 'reasons'] + tag
@@ -262,6 +288,14 @@ class StockRanker:
             print(f"\n🏆 Top 10 選股結果 (含 AI 解釋) ({today_str}):")
             print(top10[out_cols].to_string(index=False))
             print(f"\n檔案已儲存: {path}")
+            
+            # 新增：生成結構化分析報告
+            try:
+                print("\n📝 生成結構化分析報告...")
+                report_gen = StockReportGenerator(artifact_dir=str(self.artifact_dir))
+                report_gen.generate_report(ranked_df=rank_df, features_df=df)
+            except Exception as report_err:
+                logger.warning(f"報告生成失敗（不影響主流程）: {report_err}")
             
         except Exception as e:
             logger.error(f"排名執行失敗: {e}")
