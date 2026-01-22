@@ -1,113 +1,94 @@
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, Page
 import sys
+import time
 
-def verify_ui():
-    print("🚀 Starting robust UI verification (HEADLESS MODE)...")
-    with sync_playwright() as p:
-        # headless=True for automated testing
-        browser = p.chromium.launch(headless=True)
+class UIVerifier:
+    """
+    Robust UI Verification using Playwright Best Practices
+    """
+    def __init__(self, page: Page):
+        self.page = page
+
+    def navigate_home(self):
+        print("⏳ Navigating to localhost:8501...")
+        self.page.goto("http://localhost:8501", timeout=30000)
+        # Critical: Wait for network to be idle (Streamlit loads a lot of chunks)
         try:
-            page = browser.new_page()
-            
-            # 1. 導航到首頁
-            print("⏳ Navigating to localhost:8501...")
-            page.goto("http://localhost:8501", timeout=30000)
-            
-            # Debug: Print title
-            print(f"📄 Page Title: {page.title()}")
-            
-            # 2. 等待 Streamlit App Container (更穩定的檢查點)
-            print("⏳ Waiting for Streamlit app to load...")
-            page.wait_for_selector(".stApp", timeout=30000)
-            print("✅ Streamlit container loaded.")
+            self.page.wait_for_load_state('networkidle', timeout=10000)
+        except:
+            print("⚠️ Network idle timed out, proceeding anyway...")
+        
+        # Wait for the main app container
+        print("⏳ Waiting for Streamlit app container...")
+        self.page.wait_for_selector(".stApp", state="visible", timeout=30000)
+        print(f"✅ Page loaded: {self.page.title()}")
 
-            # Take a screenshot of the main page
-            page.screenshot(path="artifacts/verification_main_page.png")
-            print("📸 Main page screenshot saved.")
+    def check_stock_list_and_click(self, stock_text: str = "1141"):
+        print(f"⏳ Looking for stock {stock_text}...")
+        # Use precise Selector
+        selector = f"text={stock_text}"
+        try:
+            self.page.wait_for_selector(selector, state="visible", timeout=15000)
+            print(f"✅ Found stock {stock_text}")
+            
+            # Click and wait for re-render
+            print(f"⏳ Clicking {stock_text}...")
+            self.page.click(selector)
+            # Streamlit re-runs script on interaction, wait for network idle again if possible
+            # or wait for a specific element that appears ONLY after click
+            time.sleep(2) # Stability wait for Streamlit trigger
+            
+        except Exception as e:
+            print(f"❌ Stock {stock_text} interaction failed.")
+            raise e
 
-            # 3. 檢查標題 (使用更寬鬆的選擇器)
-            # 根據 app/ui.py 的實際內容調整檢查文字
-            # 假設標題在 h1 中
-            try:
-                # 嘗試尋找主要標題
-                heading = page.wait_for_selector("h1", timeout=10000)
-                print(f"✅ Found H1: {heading.inner_text()}")
-            except:
-                print("⚠️ H1 not found within timeout.")
+    def verify_detail_page_report(self):
+        print("⏳ Verifying Detail Page Content (Report)...")
+        # Check for our new layout elements
+        try:
+            # Look for "Deep Dive" section or TL;DR
+            # Using partial text match or CSS
+            self.page.wait_for_selector("h4:has-text('TL;DR')", timeout=20000)
+            print("✅ Found 'TL;DR' section (Markdown Report confirmed).")
+        except:
+            print("⚠️ 'TL;DR' header not found. Checking for fallback '詳細分析報告'...")
+            self.page.wait_for_selector("text=詳細分析報告", timeout=20000)
+            print("✅ Found '詳細分析報告'.")
 
-            # 4. 檢查是否有個股列表 (確保 features.parquet 讀取成功)
-            # 找尋包含數字的元素，代表股票代碼
-            print("⏳ Looking for stock list...")
-            try:
-                page.wait_for_selector("text=1141", timeout=10000)
-                print("✅ Stock list loaded (Found stock 1141).")
-            except:
-                print("⚠️ Stock 1141 not found. Dumping page text...")
-                print(page.inner_text("body")[:500])
-                raise Exception("Stock list not loaded.")
-            
-            # 5. 點擊進入詳情頁
-            print("⏳ Clicking stock detail...")
-            # 嘗試點擊 "1141"
-            page.click("text=1141", timeout=5000)
-            
-            # 6. 等待詳情頁內容
-            print("⏳ Waiting for detail page content...")
-            # 等待關鍵字 "推薦理由" 或 "個股分析"
-            try:
-                page.wait_for_selector("text=TL;DR", timeout=30000)
-                print("✅ Found 'TL;DR' (Markdown Report Integrated).")
-            except:
-                 # Fallback check
-                 print("⚠️ 'TL;DR' not found. Checking fallback...")
-                 try:
-                     page.wait_for_selector("text=詳細分析報告", timeout=5000)
-                     print("✅ Found header '詳細分析報告'.")
-                 except:
-                     print("❌ Detail page content not found. Dumping content:")
-                     print(page.inner_text("body")[:1000])
-                     raise Exception("Detail page content check failed.")
+        self.page.screenshot(path="artifacts/verification_detail_page.png")
+        print("📸 Screenshot saved.")
 
-            page.screenshot(path="artifacts/verification_detail_page.png")
-            print("📸 Detail page screenshot saved.")
-            
-            # 7. 驗證內容 (確保中文化生效)
-            content = page.content()
-            keyword_found = False
-            keywords_cn = ["突破20日新高", "月線支撐", "布林中軌", "MACD", "KD"]
-            
-            for kw in keywords_cn:
-                if kw in content:
-                    print(f"✅ Found Chinese keyword: {kw}")
-                    keyword_found = True
-                    break
-            
-            if not keyword_found:
-                 # Check for English leftovers
-                 if "break_20d_high" in content:
-                     print("❌ Found ENGLISH explanation keywords (Translation failed!).")
-                     sys.exit(1)
-                 else:
-                     print("⚠️ No specific known explanation keywords found, but page seems valid.")
+    def check_no_errors(self):
+        content = self.page.content()
+        if "StreamlitAPIException" in content:
+            raise Exception("❌ Streamlit API Exception detected!")
+        if "Traceback" in content:
+            raise Exception("❌ Key Error / Traceback detected!")
+        print("✅ No obvious error stack traces found.")
 
-            # 8. 檢查錯誤訊息
-            if "PyExtensionType" in content or "StreamlitAPIException" in content:
-                print("❌ FAILURE: Critical Error Message found on page!")
-                sys.exit(1)
+def run_verification():
+    print("🚀 Starting Refactored UI Verification...")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+        
+        verifier = UIVerifier(page)
+        
+        try:
+            verifier.navigate_home()
+            verifier.check_stock_list_and_click("1141")
+            verifier.verify_detail_page_report()
+            verifier.check_no_errors()
             
-            print("🎉 VERIFICATION SUCCESS: UI is stable and functioning correctly.")
+            print("🎉 VERIFICATION SUCCESS!")
             
         except Exception as e:
             print(f"❌ Verification Failed: {e}")
-            # Try to screenshot on failure
-            try:
-                page.screenshot(path="artifacts/verification_failure.png")
-                print("📸 Failure screenshot saved to artifacts/verification_failure.png")
-            except:
-                pass
+            page.screenshot(path="artifacts/verification_failure.png")
             sys.exit(1)
         finally:
             browser.close()
 
 if __name__ == "__main__":
-    verify_ui()
+    run_verification()

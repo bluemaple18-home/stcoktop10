@@ -27,6 +27,7 @@ vectorbt>=0.25.0          # vectorbt backtesting framework
 
 # 資料擷取
 requests>=2.31.0
+aiohttp>=3.9.0               # Async HTTP client
 yfinance>=0.2.0,<1.0     # Yahoo Finance 備援資料源（限制版本相容 Python 3.9）
 beautifulsoup4>=4.12.0   # 網頁解析
 lxml>=4.9.0              # HTML/XML 解析

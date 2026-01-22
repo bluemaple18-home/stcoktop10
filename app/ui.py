@@ -404,25 +404,53 @@ def show_stock_detail():
     df, _ = load_latest_ranking()
     stock_options = []
     if df is not None and not df.empty:
+        # Get Top 10 options first
         stock_options = [f"{row['stock_id']} {row.get('stock_name', '')}" for _, row in df.head(10).iterrows()]
     
     col_header_1, col_header_2 = st.columns([3, 1])
     
     with col_header_2:
-        # Get current selection index
-        current_idx = 0
+        # Get current selection from state
         current_stock_id = st.session_state.get('selected_stock', None)
+        current_stock_name = st.session_state.get('selected_stock_name', '')
+        
+        # Ensure current selection is in options
+        current_opt_str = f"{current_stock_id} {current_stock_name}"
+        
+        # Check if current stock is in the list based on stock_id
+        found_in_list = False
+        current_idx = 0
+        
         if current_stock_id:
             for i, opt in enumerate(stock_options):
                 if opt.startswith(str(current_stock_id)):
                     current_idx = i
+                    found_in_list = True
                     break
+            
+            # If not in list (e.g. selected from sidebar but not in Top 10), add it
+            if not found_in_list:
+                stock_options.append(current_opt_str)
+                current_idx = len(stock_options) - 1
         
-        selected_opt = st.selectbox("Switch Ticker", stock_options, index=current_idx, label_visibility="collapsed")
-        if selected_opt:
-            parts = selected_opt.split()
-            st.session_state['selected_stock'] = parts[0]
-            st.session_state['selected_stock_name'] = ' '.join(parts[1:]) if len(parts) > 1 else ''
+        # Callback to update session state
+        def on_ticker_change():
+            sel = st.session_state['main_ticker_selector']
+            if sel:
+                parts = sel.split()
+                st.session_state['selected_stock'] = parts[0]
+                st.session_state['selected_stock_name'] = ' '.join(parts[1:]) if len(parts) > 1 else ''
+
+        # Render Selectbox
+        # Use key='main_ticker_selector' and on_change callback for stability
+        st.selectbox(
+            "Switch Ticker", 
+            stock_options, 
+            index=current_idx, 
+            key='main_ticker_selector',
+            label_visibility="collapsed",
+            on_change=on_ticker_change
+        )
 
     stock_id = st.session_state.get('selected_stock', None)
     stock_name = st.session_state.get('selected_stock_name', '')

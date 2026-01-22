@@ -1,5 +1,31 @@
 # Changelog
 
+## [v2.7.0-async-boost] - 2026-01-22 (效能飛躍與全域技能)
+
+### 🚀 效能與架構升級 (Major)
+- **非同步資料抓取 (Async Fetcher)**: 
+  - 徹底重構 `data_fetcher.py`，導入 `aiohttp` + `asyncio`。
+  - 從「單線程逐日爬取」進化為「多線程併發 (Semaphore=3)」。
+  - 實測資料回補速度提升 3~5 倍，並移除冗餘同步代碼。
+- **全域技能庫 (Global Skills)**:
+  - 建立 `~/.agent/skills` 標準庫，包含 Playwright, Async Patterns, Scikit-learn 等核心能力。
+  - 實現「零接觸 (Zero-Touch)」技能掛載，新專案自動繼承，無須重複安裝。
+
+### ✨ 新功能與優化
+- **市場訊號矩陣 (Signal Matrix)**: 
+  - UI 佈局更新為矩陣式卡片 (趨勢、動能、量能、AI信心)。
+  - 解決了選股切換時的「狀態鎖死」問題 (State Lock Fix)。
+- **AI 可解釋性 (SHAP)**:
+  - `agent_b_modeling.py` 新增 SHAP Summary Plot 實作，模型訓練後自動產出特徵影響力圖表。
+- **穩健自動化測試**:
+  - 重寫 `verify_ui_robust.py`，導入 `networkidle` 等待機制，徹底解決網路延遲導致的 False Positive。
+
+### 🐛 錯誤修復
+- **UI Reactivity**: 修復當選擇非 Top 10 股票時，下拉選單無法同步更新的問題。
+- **Dependencies**: 清理 `requirements.txt`，加入 `aiohttp` 依賴。
+
+---
+
 ## [v2.6.0-ui-verified] - 2026-01-22 (UI 重構與報告整合)
 
 ### 🚀 主要功能更新

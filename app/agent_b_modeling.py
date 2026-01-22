@@ -307,13 +307,53 @@ class LightGBMTrainer:
         print(f"✓ 已產出特徵重要性圖表")
         return fi_df
         
-    def plot_shap_summary(self, sample_size: int = 1000):
-        """繪製 SHAP Summary Plot"""
+    def plot_shap_summary(self, X_sample: pd.DataFrame = None, sample_size: int = 1000):
+        """繪製 SHAP Summary Plot (Scikit-Learn Skill Integration)"""
+        if self.model is None:
+            print("⚠ 模型尚未訓練，無法繪製 SHAP")
+            return
+
         print("⏳ 計算 SHAP values...")
-        # 隨機抽樣背景資料加速計算
-        # 需在 train_final_model 後呼叫，且需重新 load data 或傳入 data
-        # 這裡簡化：假設外部會呼叫或不繪製
-        pass
+        try:
+            # 使用 TreeExplainer (針對 LightGBM 優化)
+            explainer = shap.TreeExplainer(self.model)
+            
+            if X_sample is None:
+                # 若未提供，嘗試自動載入一部分資料
+                try:
+                    df = self.load_features()
+                    X, _, _ = self.prepare_train_data(df)
+                    # 隨機採樣以加速
+                    if len(X) > sample_size:
+                        X_sample = X.sample(n=sample_size, random_state=42)
+                    else:
+                        X_sample = X
+                except Exception as e:
+                    print(f"⚠ 無法自動載入資料供 SHAP 分析: {e}")
+                    return
+
+            shap_values = explainer.shap_values(X_sample)
+            
+            # LightGBM binary classification returns list of arrays [class0, class1] or just class1 depending on version
+            # New LightGBM versions with SHAP might return array. Handle carefully.
+            if isinstance(shap_values, list):
+                # Binary classification: index 1 is positive class
+                shap_vals_target = shap_values[1]
+            else:
+                shap_vals_target = shap_values
+
+            plt.figure(figsize=(10, 8))
+            shap.summary_plot(shap_vals_target, X_sample, show=False)
+            plt.title("SHAP Summary Plot (Top Features)")
+            plt.tight_layout()
+            
+            save_path = self.artifact_dir / "shap_summary.png"
+            plt.savefig(save_path, dpi=150)
+            plt.close()
+            print(f"✓ 已產出 SHAP Summary Plot: {save_path}")
+            
+        except Exception as e:
+            print(f"❌ SHAP 分析失敗: {e}")
 
 
 def main():
