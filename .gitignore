@@ -46,7 +46,9 @@ artifacts/*
 .DS_Store
 
 # Logs
+logs/
 *.log
+*.err
 
 # MLflow
 mlruns/
