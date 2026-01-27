@@ -20,6 +20,7 @@ echo "========================================" | tee -a "$LOG_FILE"
 
 # 啟動虛擬環境
 source .venv/bin/activate
+export PYTHONPATH=$PROJECT_DIR
 
 # 備份舊模型
 echo "" | tee -a "$LOG_FILE"
@@ -38,7 +39,7 @@ fi
 # 執行模型訓練
 echo "" | tee -a "$LOG_FILE"
 echo "🎓 執行 LightGBM 訓練 (Optuna + Walk-forward)..." | tee -a "$LOG_FILE"
-python app/agent_b_modeling.py >> "$LOG_FILE" 2>&1
+python -m app.agent_b_modeling >> "$LOG_FILE" 2>&1
 if [ $? -eq 0 ]; then
     echo "✅ 模型訓練完成" | tee -a "$LOG_FILE"
 else

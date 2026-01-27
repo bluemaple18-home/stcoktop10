@@ -43,6 +43,11 @@ RETRAIN_PLIST="$LAUNCH_AGENTS_DIR/com.tw-top10.retrain.plist"
 sed "s|__PROJECT_DIR__|$PROJECT_DIR|g" "$PROJECT_DIR/scripts/com.tw-top10.retrain.plist" > "$RETRAIN_PLIST"
 echo "✅ 已建立: $RETRAIN_PLIST"
 
+# Web UI plist
+WEBUI_PLIST="$LAUNCH_AGENTS_DIR/com.tw-top10.webui.plist"
+sed "s|__PROJECT_DIR__|$PROJECT_DIR|g" "$PROJECT_DIR/scripts/com.tw-top10.webui.plist" > "$WEBUI_PLIST"
+echo "✅ 已建立: $WEBUI_PLIST"
+
 # 載入排程
 echo ""
 echo "🚀 載入 launchd agents..."
@@ -53,6 +58,10 @@ echo "✅ 每日執行排程已載入"
 launchctl unload "$RETRAIN_PLIST" 2>/dev/null || true
 launchctl load "$RETRAIN_PLIST"
 echo "✅ 每日重訓排程已載入"
+
+launchctl unload "$WEBUI_PLIST" 2>/dev/null || true
+launchctl load "$WEBUI_PLIST"
+echo "✅ Web UI 服務已載入"
 
 # 驗證
 echo ""

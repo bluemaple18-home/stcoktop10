@@ -23,7 +23,10 @@ class StockReportGenerator:
             "ma_cross": "MA5 上穿 MA20＝短期趨勢翻多，若 MA20 沒下彎，勝率更好。",
             "bb_band": "站上布林中軌＝回到多頭範圍；跌破則多頭走弱。",
             "volume": "量能放大＝上漲有人追價，比只有價格漲更健康。",
-            "chips": "法人連買＝大資金偏多，通常有延續性，但也要看大盤。"
+            "chips": "法人連買＝大資金偏多，通常有延續性，但也要看大盤。",
+            "smc_bos": "BOS (結構破壞)＝價格突破前高/低並站穩，代表原趨勢延續。",
+            "smc_choch": "CHoCH (特徵改變)＝價格反向破壞結構，代表可能的趨勢翻轉。",
+            "smc_ob": "Order Blocks (訂單塊)＝機構大單進場留下的足跡，通常具備強大支撐/壓力力道。"
         }
     
     def generate_report(self, ranked_df: pd.DataFrame, features_df: pd.DataFrame):
@@ -221,9 +224,12 @@ class StockReportGenerator:
 - **價量位置**：收盤={ss.get('close')}; 相對MA: {ma_pos}; 布林帶: {ss.get('bollinger')}
 - **動能指標**：RSI={ss.get('rsi')}; MACD={ss.get('macd')}; KD={ss.get('kd')}
 - **量能**：今日量/20日均量={ss.get('vol_ratio')}倍
+- **SMC 結構**：{ss.get('smc_trend')} (BOS={ss.get('smc_bos')})
 - **籌碼**：外資5日={inst.get('foreign')}張; 投信5日={inst.get('invest')}張
 
 ### 7) 教學角落
+- **BOS/CHoCH (SMC)**：{self.edu_corner['smc_bos']}
+- **Order Blocks (SMC)**：{self.edu_corner['smc_ob']}
 - **突破 20 日高**：{self.edu_corner['breakout']}
 - **MA5 上穿 MA20**：{self.edu_corner['ma_cross']}
 - **站上布林中軌**：{self.edu_corner['bb_band']}
@@ -307,7 +313,23 @@ class StockReportGenerator:
                 "type": "AI",
                 "name": "模型：高勝率訊號",
                 "evidence": f"模型預測勝率 {ai_prob:.1f}%",
-                "plain_text": "綜合多因子評估，歷史回測顯示此情境勝率高。"
+                "plain_text": "綜合多因子評估，歷史回測顯示此情境勝率 high。"
+            })
+            
+        # 6. SMC (Smart Money Concepts)
+        if latest.get('bos') == 1:
+            triggers.append({
+                "type": "SMC",
+                "name": "結構：BOS 向上破壞",
+                "evidence": "價格突破前高結構點並站穩",
+                "plain_text": "市場結構確認延續多頭，機構買盤動能強勁。"
+            })
+        if latest.get('choch') == 1:
+            triggers.append({
+                "type": "SMC",
+                "name": "結構：CHoCH 翻多訊號",
+                "evidence": "價格反向破壞空頭結構點",
+                "plain_text": "趨勢特徵發生反轉，初步確認由空轉多。"
             })
             
         return triggers if triggers else [{
@@ -376,6 +398,8 @@ class StockReportGenerator:
             'macd': macd_str,
             'kd': f"K{int(k_val)}",
             'vol_ratio': vol_ratio,
+            'smc_trend': "多頭結構" if latest.get('bos') == 1 else "盤整/轉折" if latest.get('choch') != 0 else "中性",
+            'smc_bos': "向上" if latest.get('bos') == 1 else "向下" if latest.get('bos') == -1 else "無",
             'inst_flow_5_10_20': {
                 'foreign': int(f_buy),
                 'invest': int(i_buy),

@@ -29,7 +29,7 @@ class LightGBMTrainer:
     """LightGBM 分類模型訓練器 (Advanced 版: Calibration + SHAP)"""
     
     def __init__(self, data_dir: str = "data/clean", model_dir: str = "models", 
-                 artifact_dir: str = "artifacts", horizon: int = 10, threshold: float = 0.05):
+                 artifact_dir: str = "artifacts", horizon: int = 10, threshold: float = 0.03):
         """
         初始化訓練器
         Args:
@@ -88,7 +88,8 @@ class LightGBMTrainer:
             exclude_cols = [
                 'symbol', 'stock_id', 'date', 'target', 'stock_name', 
                 'entry_price', 'exit_price', 'return_5d', 'future_close',
-                'return_long', 'future_return' # 修正漏網之魚
+                'return_long', 'future_return',
+                'high_roll_20', 'low_roll_5', 'future_max_20d' # 修正 leakage
             ]
         
         y = df['target'] # 0 or 1
@@ -368,7 +369,7 @@ def main():
         
         # 2. 自動調優
         X, y, feature_cols = trainer.prepare_train_data(df)
-        trainer.optimize_params(X, y, n_trials=20)
+        trainer.optimize_params(X, y, n_trials=100) # Weekend Mode: 100 trials
         
         # 3. 時序滾動驗證與最終訓練
         trainer.walk_forward_train(df)

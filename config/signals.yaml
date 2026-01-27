@@ -7,6 +7,8 @@ scoring:
   max_bearish: -2.0
   top_reasons: 3
   weights:
+    bos: 1.5
+    choch: 1.5
     break_20d_high: 2.0
     ma5_cross_ma20_up: 1.5
     close_above_bb_mid: 1.0

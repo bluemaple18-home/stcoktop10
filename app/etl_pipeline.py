@@ -8,16 +8,29 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import logging
 
-from data_fetcher import DataFetcherOrchestrator
-from indicators import TechnicalIndicators
-from volume_indicators import VolumeIndicators
-from fundamental_data import FundamentalData
-from risk_filter import RiskFilter
-from event_detector import EventDetector
+try:
+    from .data_fetcher import DataFetcherOrchestrator
+    from .indicators import TechnicalIndicators
+    from .volume_indicators import VolumeIndicators
+    from .fundamental_data import FundamentalData
+    from .risk_filter import RiskFilter
+    from .event_detector import EventDetector
+except ImportError:
+    from app.data_fetcher import DataFetcherOrchestrator
+    from app.indicators import TechnicalIndicators
+    from app.volume_indicators import VolumeIndicators
+    from app.fundamental_data import FundamentalData
+    from app.risk_filter import RiskFilter
+    from app.event_detector import EventDetector
 try:
     from finmind_integrator import FinMindIntegrator
 except ImportError:
     from app.finmind_integrator import FinMindIntegrator
+
+try:
+    from data_healer import DataHealer
+except ImportError:
+    from app.data_healer import DataHealer
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -79,10 +92,24 @@ class ETLPipeline:
             delay=delay
         )
         
-        if df.empty:
-            logger.error("資料擷取失敗，中止流程")
+        if df is None or df.empty:
+            logger.error("🛑 資料擷取階段失敗，未獲得任何資料！")
             return
+            
+        # 1.05 資料完整性校驗 (新增)
+        max_date_in_data = df['date'].max()
+        today_date = datetime.now().date()
+        days_diff = (today_date - max_date_in_data.date()).days
         
+        logger.info(f"資料健康檢查: 最大日期={max_date_in_data.date()}, 距離今日={days_diff}天, 總量={len(df)}筆")
+        
+        if len(df) < 50000: # 假設一年資料至少要有這個量
+             logger.warning(f"⚠️ 資料總量過低 ({len(df)}), 可能存在大規模缺失")
+             
+        if days_diff > 3: # 如果缺超過 3 天 (扣除假日可能更長，但先設為 3 以求嚴格)
+             logger.error(f"🛑 資料嚴重過時 (最後日期 {max_date_in_data.date()})，停止後續計算以防產出錯誤報告")
+             return
+
         self.etl_stats['data_fetching'] = {
             'total_records': len(df),
             'unique_stocks': df['stock_id'].nunique(),
@@ -100,6 +127,14 @@ class ETLPipeline:
         finmind = FinMindIntegrator()
         df = finmind.integrate_chip_data(df)
         
+        # 1.2 資料去重 (防止 pivot 失敗)
+        logger.info("\n[階段 1.2] 資料去重與清理")
+        logger.info("-" * 80)
+        initial_len = len(df)
+        df = df.drop_duplicates(subset=['date', 'stock_id'], keep='first')
+        if len(df) < initial_len:
+            logger.info(f"已移除 {initial_len - len(df)} 筆重複資料")
+        
         # 2. 技術指標計算
         logger.info("\n[階段 2/7] 技術指標計算")
         logger.info("-" * 80)
@@ -115,6 +150,11 @@ class ETLPipeline:
         logger.info("-" * 80)
         vol_ind = VolumeIndicators(df)
         df = vol_ind.calculate_all_volume_indicators()
+        
+        # 強力特徵計算 (Bias & RS)
+        logger.info("計算進階特徵 (Bias & RS)...")
+        df = tech_ind.calculate_bias()
+        df = tech_ind.calculate_relative_strength()
         
         self.etl_stats['volume_indicators'] = {
             'missing_rate': vol_ind.get_missing_rate().to_dict()
@@ -226,7 +266,7 @@ class ETLPipeline:
         self.generate_etl_report(df, universe, events_df, orchestrator, tech_ind, vol_ind)
         
         # 產生視覺化
-        from visualization import generate_signals_preview
+        from .visualization import generate_signals_preview
         preview_path = self.artifacts_dir / "signals_preview.png"
         generate_signals_preview(universe, output_path=str(preview_path), num_samples=5)
         
@@ -456,9 +496,23 @@ class ETLPipeline:
         if missing_rate >= 1.0:
             logger.warning(f"⚠️ 主要指標缺值率 ({missing_rate:.2f}%) ≥ 1%")
         else:
-            logger.info(f"✅ 主要指標缺值率 ({missing_rate:.2f}%) < 1%")
-        
-        logger.info("驗收測試完成")
+            logger.info(f"✅ 主要指標缺值率 ({missing_rate:.2f}%) 符合標準")
+            
+        # 8. 資料自動修復與審核報告 (新增)
+        logger.info("\n[階段 8/8] 資料自動修復與審核")
+        logger.info("-" * 80)
+        try:
+            from data_healer import DataHealer # Added import here
+            healer = DataHealer(data_path=str(self.clean_dir / "universe.parquet"))
+            # 優先檢查並修復斷層
+            healer.check_and_heal()
+            # 產出審核報告
+            healer.generate_audit_report()
+        except Exception as e:
+            logger.warning(f"⚠️ 資料修復或審核失敗: {e}")
+
+        logger.info("\n✅ ETL 流程執行成功！")
+        logger.info("=" * 80)
         
         return stock_count >= 500 and missing_rate < 1.0 and len(missing_events) == 0
 

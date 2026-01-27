@@ -1,0 +1,311 @@
+report_date: '2026-01-26'
+total_stocks: 5
+recommendations:
+- stock: '2330.TW '
+  date: '2026-01-26'
+  decision:
+    verdict: 買入
+    reason_1: 綜合多因子評估，歷史回測顯示此情境勝率 high。
+    reason_2: ''
+  trade_plan:
+    horizon_days: 5
+    entry_zone:
+      low: !!python/object/apply:numpy._core.multiarray.scalar
+      - &id001 !!python/object/apply:numpy.dtype
+        args:
+        - f8
+        - false
+        - true
+        state: !!python/tuple
+        - 3
+        - <
+        - null
+        - null
+        - null
+        - -1
+        - -1
+        - 0
+      - !!binary |
+        ZmZmZmZ2bUA=
+      high: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        mpmZmZnpbUA=
+    invalidation: 跌破 230.6 (MA20支撐/6%停損)
+    take_profit:
+    - 連續兩根放量長上影
+    - RSI > 75 並量縮
+    position_hint: 等權/小資 <10% 單筆
+  metrics:
+    p_win_5d: 85.0
+    expected_r5: 3.5
+    confidence: 高
+  triggers:
+  - type: AI
+    name: 模型：高勝率訊號
+    evidence: 模型預測勝率 85.0%
+    plain_text: 綜合多因子評估，歷史回測顯示此情境勝率 high。
+  risks: []
+  snapshot:
+    close: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      QSaFH4V3bUA=
+    price_ma:
+      ma5_pos: 上
+      ma20_pos: 上
+      ma60_pos: 下
+    bollinger: 中
+    rsi: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      ZmZmZmZmSUA=
+    macd: 黃金交叉
+    kd: K72
+    vol_ratio: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      zczMzMzM8D8=
+    smc_trend: 中性
+    smc_bos: 無
+    inst_flow_5_10_20:
+      foreign: 0
+      invest: 0
+      dealer: 0
+  notes: 注意大盤波動，建議分批佈局
+- stock: '2331.TW '
+  date: '2026-01-26'
+  decision:
+    verdict: 買入
+    reason_1: 綜合多因子評估，歷史回測顯示此情境勝率 high。
+    reason_2: ''
+  trade_plan:
+    horizon_days: 5
+    entry_zone:
+      low: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        ZmZmZmaSg0A=
+      high: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        mpmZmZndg0A=
+    invalidation: 跌破 606.7 (MA20支撐/6%停損)
+    take_profit:
+    - 連續兩根放量長上影
+    - RSI > 75 並量縮
+    position_hint: 等權/小資 <10% 單筆
+  metrics:
+    p_win_5d: 78.0
+    expected_r5: 2.8
+    confidence: 高
+  triggers:
+  - type: AI
+    name: 模型：高勝率訊號
+    evidence: 模型預測勝率 78.0%
+    plain_text: 綜合多因子評估，歷史回測顯示此情境勝率 high。
+  risks: []
+  snapshot:
+    close: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      EAsaAU2Sg0A=
+    price_ma:
+      ma5_pos: 上
+      ma20_pos: 上
+      ma60_pos: 下
+    bollinger: 中
+    rsi: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      mpmZmZnZS0A=
+    macd: 負
+    kd: K64
+    vol_ratio: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      FK5H4XoU7j8=
+    smc_trend: 中性
+    smc_bos: 無
+    inst_flow_5_10_20:
+      foreign: 0
+      invest: 0
+      dealer: 0
+  notes: 注意大盤波動，建議分批佈局
+- stock: '2332.TW '
+  date: '2026-01-26'
+  decision:
+    verdict: 觀察
+    reason_1: 綜合多因子評估，歷史回測顯示此情境勝率 high。
+    reason_2: ''
+  trade_plan:
+    horizon_days: 5
+    entry_zone:
+      low: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        ZmZmZmZOcUA=
+      high: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        AAAAAACQcUA=
+    invalidation: 跌破 278.0 (MA20支撐/6%停損)
+    take_profit:
+    - 連續兩根放量長上影
+    - RSI > 75 並量縮
+    position_hint: 等權/小資 <10% 單筆
+  metrics:
+    p_win_5d: 72.0
+    expected_r5: 2.2
+    confidence: 中
+  triggers:
+  - type: AI
+    name: 模型：高勝率訊號
+    evidence: 模型預測勝率 72.0%
+    plain_text: 綜合多因子評估，歷史回測顯示此情境勝率 high。
+  risks: []
+  snapshot:
+    close: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      /Xsej/BNcUA=
+    price_ma:
+      ma5_pos: 下
+      ma20_pos: 下
+      ma60_pos: 下
+    bollinger: 中
+    rsi: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      AAAAAADAQkA=
+    macd: 負
+    kd: K31
+    vol_ratio: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      cT0K16Nw8T8=
+    smc_trend: 中性
+    smc_bos: 無
+    inst_flow_5_10_20:
+      foreign: 0
+      invest: 0
+      dealer: 0
+  notes: 注意大盤波動，建議分批佈局
+- stock: '2333.TW '
+  date: '2026-01-26'
+  decision:
+    verdict: 觀察
+    reason_1: 有「人」在推，上漲比較站得住，非虛漲。
+    reason_2: ''
+  trade_plan:
+    horizon_days: 5
+    entry_zone:
+      low: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        ZmZmZma2hEA=
+      high: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        ZmZmZmYGhUA=
+    invalidation: 跌破 645.0 (MA20支撐/6%停損)
+    take_profit:
+    - 連續兩根放量長上影
+    - RSI > 75 並量縮
+    position_hint: 等權/小資 <10% 單筆
+  metrics:
+    p_win_5d: 65.0
+    expected_r5: 1.5
+    confidence: 中
+  triggers:
+  - type: 量能
+    name: 量能：放量上攻
+    evidence: 今日量 8182 張 (約 1.7 倍均量)
+    plain_text: 有「人」在推，上漲比較站得住，非虛漲。
+  risks: []
+  snapshot:
+    close: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      K2HRx322hEA=
+    price_ma:
+      ma5_pos: 上
+      ma20_pos: 上
+      ma60_pos: 上
+    bollinger: 中
+    rsi: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      zczMzMyMS0A=
+    macd: 負
+    kd: K50
+    vol_ratio: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      uB6F61G4+j8=
+    smc_trend: 中性
+    smc_bos: 無
+    inst_flow_5_10_20:
+      foreign: 0
+      invest: 0
+      dealer: 0
+  notes: 注意大盤波動，建議分批佈局
+- stock: '2334.TW '
+  date: '2026-01-26'
+  decision:
+    verdict: 觀察
+    reason_1: 等待更明確發動訊號
+    reason_2: ''
+  trade_plan:
+    horizon_days: 5
+    entry_zone:
+      low: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        AAAAAAAAe0A=
+      high: !!python/object/apply:numpy._core.multiarray.scalar
+      - *id001
+      - !!binary |
+        AAAAAABoe0A=
+    invalidation: 跌破 426.8 (MA20支撐/6%停損)
+    take_profit:
+    - 連續兩根放量長上影
+    - RSI > 75 並量縮
+    position_hint: 等權/小資 <10% 單筆
+  metrics:
+    p_win_5d: 60.0
+    expected_r5: 1.0
+    confidence: 中
+  triggers:
+  - type: 觀察
+    name: 技術面平穩
+    evidence: 無特殊訊號
+    plain_text: 等待更明確發動訊號
+  risks: []
+  snapshot:
+    close: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      6OVgH8D/ekA=
+    price_ma:
+      ma5_pos: 下
+      ma20_pos: 下
+      ma60_pos: 下
+    bollinger: 中
+    rsi: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      zczMzMxMRkA=
+    macd: 負
+    kd: K36
+    vol_ratio: !!python/object/apply:numpy._core.multiarray.scalar
+    - *id001
+    - !!binary |
+      pHA9Ctej4D8=
+    smc_trend: 中性
+    smc_bos: 無
+    inst_flow_5_10_20:
+      foreign: 0
+      invest: 0
+      dealer: 0
+  notes: 注意大盤波動，建議分批佈局

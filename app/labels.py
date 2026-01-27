@@ -39,29 +39,77 @@ class LabelGenerator:
         df = df.sort_values(['stock_id', 'date'])
         
         # 1. Entry Price: D+1 Open
-        # shift(-1) 取下一列
         df['entry_price'] = df.groupby('stock_id')['open'].shift(-1)
         
-        # 2. Exit Price: D+N Close
-        # 持有 N 天。
-        df['exit_price'] = df.groupby('stock_id')['close'].shift(-self.horizon)
+        # New Logic: Rolling Windows
+        # Target: 
+        #   (1) Max High in next 20 days >= Entry * 1.05 (Profit 5%)
+        #   (2) Min Low in next 5 days > Entry * 0.95 (Survival > 5 days, Stop Loss 5%)
         
-        # 3. Calculate Return
-        # (賣出 - 買入) / 買入
-        df['return_long'] = (df['exit_price'] - df['entry_price']) / df['entry_price']
-        # 為了相容性保留 return_5d 的名稱? 或者統一改名?
-        # 為了避免 agent_b_modeling 壞掉，這欄位名稱應保持或更新 modeling
-        # 我們將其命名為 return_5d (歷史包袱) 或 return_holding?
-        # 決定：將欄位改名為 'future_return'，並保留 'return_5d' 作為 alias (若有舊程式依賴)
-        df['future_return'] = df['return_long']
-        df['return_5d'] = df['return_long'] 
+        indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=20)
+        df['future_max_20d'] = df.groupby('stock_id')['high'].rolling(window=indexer).max().reset_index(0, drop=True)
+        # Shift back 1 to align with Signal Date (since window includes current row, we want window starting next day?)
+        # Actually rolling forward on sorted date includes 'current' row. 
+        # We need "Next 20 days from Entry Day". Entry is D+1.
+        # So we want window(20) starting at D+1.
+        # Which is shift(-1).rolling.
         
-        # 4. Generate Target (Binary Classification)
-        # 獲利 > threshold 即為 1 (Win)
-        df['target'] = (df['future_return'] > self.threshold).astype(int)
+        # Let's simple logical equivalent:
+        # Shift -1 to align to D+1
+        # Then rolling max forward.
         
-        # 補充：Debug 用，紀錄未來收盤
-        df['future_close'] = df['exit_price']
+        # Max Price in [D+1, D+20]
+        # Rolling(20) on D+1 (features at D+1) gives max in [D+1...D+20]
+        # So we simply need to shift the rolling result? 
+        # No, forward rolling at T includes T...T+W.
+        # So forward_rolling(20) at T+1 covers T+1...T+20.
+        
+        # Implementation:
+        # 1. Align valid High/Low series
+        highs = df.groupby('stock_id')['high']
+        lows = df.groupby('stock_id')['low']
+        
+        # 2. Compute Forward Rolling
+        idx_20 = pd.api.indexers.FixedForwardWindowIndexer(window_size=20)
+        idx_5 = pd.api.indexers.FixedForwardWindowIndexer(window_size=5)
+        
+        # Max High next 20 days (from tomorrow's perspective)
+        # We shift results by -1 to put (Max of D+1...D+20) onto D
+        # Wait, Entry is at D+1.
+        # We want to know if trade taken at D+1 (Open) succeeds.
+        # So we look at Highs from D+1 to D+20.
+        
+        # Step A: Get Highs shifted by -1 (starts at D+1)
+        # Step B: Rolling Max (20) on that.
+        # But rolling works on index.
+        
+        # Easier way:
+        # Compute Rolling Max on whole series first (forward).
+        # max_high_forward_20[t] = max(high[t]...high[t+19])
+        # We want max(high[t+1]...high[t+20])
+        # So we just taking max_high_forward_20 shifted by -1.
+        
+        df['high_roll_20'] = df.groupby('stock_id')['high'].transform(
+            lambda x: x.rolling(window=idx_20).max().shift(-1)
+        )
+        
+        df['low_roll_5'] = df.groupby('stock_id')['low'].transform(
+            lambda x: x.rolling(window=idx_5).min().shift(-1)
+        )
+        
+        # Generate Target
+        # Profit Target: 5% (1.05)
+        # Stop Loss: 5% (0.95)
+        
+        cond_profit = df['high_roll_20'] >= (df['entry_price'] * (1 + self.threshold))
+        cond_survive = df['low_roll_5'] > (df['entry_price'] * (1 - self.threshold))
+        
+        df['target'] = (cond_profit & cond_survive).astype(int)
+        
+        # Fill helper cols for debug
+        df['future_return'] = (df['high_roll_20'] / df['entry_price']) - 1
+        df['return_5d'] = df['future_return']
+        df['exit_price'] = df['high_roll_20']
         
         # 統計
         valid_count = df['future_return'].notna().sum()

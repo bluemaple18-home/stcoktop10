@@ -20,11 +20,12 @@ echo "========================================" | tee -a "$LOG_FILE"
 
 # 啟動虛擬環境
 source .venv/bin/activate
+export PYTHONPATH=$PROJECT_DIR
 
 # Step 1: ETL 資料更新
 echo "" | tee -a "$LOG_FILE"
 echo "📊 Step 1/2: 執行 ETL 資料更新..." | tee -a "$LOG_FILE"
-python app/etl_pipeline.py --update-daily >> "$LOG_FILE" 2>&1
+python -m app.etl_pipeline >> "$LOG_FILE" 2>&1
 if [ $? -eq 0 ]; then
     echo "✅ ETL 完成" | tee -a "$LOG_FILE"
 else
@@ -35,7 +36,7 @@ fi
 # Step 2: 執行選股
 echo "" | tee -a "$LOG_FILE"
 echo "🎯 Step 2/2: 執行 Agent B 選股..." | tee -a "$LOG_FILE"
-python app/agent_b_ranking.py >> "$LOG_FILE" 2>&1
+python -m app.agent_b_ranking >> "$LOG_FILE" 2>&1
 if [ $? -eq 0 ]; then
     echo "✅ 選股完成" | tee -a "$LOG_FILE"
 else

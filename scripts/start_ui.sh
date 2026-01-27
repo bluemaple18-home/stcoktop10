@@ -15,6 +15,13 @@ echo ""
 # 啟動虛擬環境
 source .venv/bin/activate
 
+# 檢查是否為非互動式模式 (例如 launchd)
+if [ ! -t 0 ] || [ "$1" == "--no-interact" ]; then
+    echo "🤖 偵測到非互動式模式，直接啟動 Streamlit (Local Only)..."
+    # SECURITY FIX: Bind to localhost only
+    exec streamlit run app/ui.py --server.port 8501 --server.address 127.0.0.1 --server.headless true
+fi
+
 # 檢查 ngrok 是否安裝
 if ! command -v ngrok &> /dev/null; then
     echo "⚠️ ngrok 未安裝"
@@ -36,12 +43,14 @@ if ! command -v ngrok &> /dev/null; then
     echo "🌐 啟動 Streamlit (本地模式)..."
     echo "   存取網址: http://localhost:8501"
     echo ""
-    streamlit run app/ui.py --server.port 8501 --server.address localhost
+    # SECURITY FIX: Bind to localhost only
+    streamlit run app/ui.py --server.port 8501 --server.address 127.0.0.1
     
 else
     # 啟動 Streamlit (背景執行)
     echo "🌐 啟動 Streamlit..."
-    streamlit run app/ui.py --server.port 8501 --server.address 0.0.0.0 &
+    # SECURITY FIX: Bind to localhost only
+    streamlit run app/ui.py --server.port 8501 --server.address 127.0.0.1 &
     STREAMLIT_PID=$!
     
     # 等待 Streamlit 啟動

@@ -38,6 +38,8 @@ class StockRanker:
         'bullish_engulfing': '多頭吞噬K線',
         'hammer': '錘子線型態',
         'morning_star': '晨星反轉',
+        'bos': 'SMC結構破壞',
+        'choch': 'SMC特徵改變',
     }
     
     def __init__(self, data_dir: str = "data/clean", model_dir: str = "models",
@@ -163,13 +165,19 @@ class StockRanker:
             raw_prob = self.model.predict(X)
             df['raw_prob'] = raw_prob
             
-            # Calibrate if available
+            # Calibrate if available (Critical for Real Win Rate)
             if self.calibrator:
-                # IsotonicRegression.predict expects 1D array
-                df['model_prob'] = self.calibrator.predict(raw_prob)
+                try:
+                    cal_prob = self.calibrator.predict(raw_prob)
+                    df['model_prob'] = cal_prob
+                    logger.info("✅ 已應用機率校準 (Isotonic Calibration)")
+                except Exception as e:
+                    logger.warning(f"校準失敗，退回原始機率: {e}")
+                    df['model_prob'] = raw_prob
             else:
                 df['model_prob'] = raw_prob
         else:
+            # Fallback
             df['model_prob'] = 0.5 
             df['raw_prob'] = 0.5
             
@@ -240,7 +248,7 @@ class StockRanker:
             if clean_sigs:
                 # 豐富化理由 (加入具體數值)
                 enriched_sigs = []
-                for s in clean_sigs[:3]:
+                for s in clean_sigs[:5]:
                     if '突破20日' in s:
                         prior_high = row.get('ref_high_20d', 0)
                         if prior_high > 0:
@@ -255,6 +263,12 @@ class StockRanker:
                         # 標註日期 (當日)
                         date_str = row['date'].strftime('%m/%d') if 'date' in row else ""
                         s = f"{s} ({date_str})"
+                    if 'SMC結構破壞' in s:
+                        val = row.get('bos', 0)
+                        s = f"{s} ({'向上突破' if val == 1 else '向下跌破'})"
+                    if 'SMC特徵改變' in s:
+                        val = row.get('choch', 0)
+                        s = f"{s} ({'翻多訊號' if val == 1 else '翻空訊號'})"
                     enriched_sigs.append(s)
                     
                 tpl += "  \n".join([f"• {s}" for s in enriched_sigs])

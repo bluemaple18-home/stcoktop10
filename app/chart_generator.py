@@ -43,7 +43,7 @@ def generate_stock_chart(
     stock_name: str, 
     df: pd.DataFrame, 
     output_path: Path,
-    days: int = 60
+    days: int = 250
 ) -> bool:
     """
     生成個股技術圖表

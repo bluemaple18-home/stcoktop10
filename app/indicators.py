@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import logging
 from typing import Optional
+from app.smc import calculate_smc
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -97,6 +98,44 @@ class TechnicalIndicators:
         osc = dif - dem
         
         self._merge_indicator(dif, 'macd')
+        self._merge_indicator(dem, 'macd_signal')
+        self._merge_indicator(osc, 'macd_hist')
+        
+        return self.df
+
+    def calculate_bias(self, periods: list = [20, 60]) -> pd.DataFrame:
+        """計算乖離率 (Bias) - 強力特徵"""
+        logger.info(f"計算乖離率 (Vectorized): {periods}")
+        
+        close = self.pivots['close']
+        
+        for period in periods:
+            ma = close.rolling(window=period).mean()
+            bias = ((close - ma) / ma) * 100
+            self._merge_indicator(bias, f'bias_{period}')
+            
+        return self.df
+
+    def calculate_relative_strength(self) -> pd.DataFrame:
+        """計算相對強弱 (Relative Strength) - 橫向排名"""
+        logger.info("計算相對強弱 RS (Vectorized)")
+        
+        close = self.pivots['close']
+        
+        # 1. 每日收益率
+        returns = close.pct_change()
+        
+        # 2. RS Rank (當天漲跌幅在所有股票中的排名百分比, 0~100)
+        # 越高代表當天比越多股票強
+        rs_rank = returns.rank(axis=1, pct=True) * 100
+        
+        # 3. RS Momentum (近 20 日 RS Rank 的平均)
+        rs_mom = rs_rank.rolling(window=20).mean()
+        
+        self._merge_indicator(rs_rank, 'rs_rank_1d')
+        self._merge_indicator(rs_mom, 'rs_rank_20d')
+        
+        return self.df
         self._merge_indicator(dem, 'macd_signal')
         self._merge_indicator(osc, 'macd_hist')
         
@@ -436,6 +475,87 @@ class TechnicalIndicators:
             
         return self.df
 
+    def calculate_candlestick_patterns(self) -> pd.DataFrame:
+        """
+        計算K線型態 (Hammer, Engulfing, Morning Star, Doji) - 向量化
+        補強無籌碼資料時的技術面判斷
+        """
+        logger.info("計算K線型態 (Vectorized: Hammer, Engulfing, Morning Star, Doji)")
+        
+        open_ = self.pivots['open']
+        high = self.pivots['high']
+        low = self.pivots['low']
+        close = self.pivots['close']
+        
+        # 實體與影線
+        body = (close - open_).abs()
+        upper_shadow = high - np.maximum(close, open_)
+        lower_shadow = np.minimum(close, open_) - low
+        
+        # 1. Hammer (錘頭): 下影線長 (>2*body), 上影線短 (<0.5*body), 實體小
+        is_hammer = (lower_shadow > body * 2) & (upper_shadow < body * 0.5) & (body > 0)
+        self._merge_indicator(is_hammer.astype(int), 'candle_hammer')
+        
+        # 2. Bullish Engulfing (多頭吞噬): Yesterday Red, Today Green, Today covers Yesterday
+        # Yas: Open > Close (Red)
+        y_open = open_.shift(1)
+        y_close = close.shift(1)
+        y_is_red = y_close < y_open
+        
+        # Today: Close > Open (Green)
+        is_green = close > open_
+        
+        # Engulfing: Open < Y_Close and Close > Y_Open
+        is_engulfing = y_is_red & is_green & (open_ < y_close) & (close > y_open)
+        self._merge_indicator(is_engulfing.astype(int), 'candle_engulfing')
+        
+        # 3. Doji (十字線): Body very small relative to range
+        rng = high - low
+        is_doji = (body <= rng * 0.1) & (rng > 0)
+        self._merge_indicator(is_doji.astype(int), 'candle_doji')
+        
+        # 4. Morning Star (晨星): Red -> Gap Down Small -> Green Gap Up
+        # Day 1: Red (Long body?)
+        d1_open = open_.shift(2)
+        d1_close = close.shift(2)
+        d1_red = d1_close < d1_open
+        
+        # Day 2: Small body, Gap Down (High < D1_Low is strict, let's say Open < D1_Close)
+        d2_open = open_.shift(1)
+        d2_close = close.shift(1)
+        d2_body = (d2_close - d2_open).abs()
+        # Gap down: D2_Max < D1_Min or simply D2 Open/Close < D1 Close
+        d2_gap = np.maximum(d2_open, d2_close) < d1_close
+        
+        # Day 3: Green, Close > D1 Midpoint
+        d1_mid = (d1_open + d1_close) / 2
+        d3_green = close > open_
+        d3_strong = close > d1_mid
+        
+        is_morning_star = d1_red & d2_gap & d3_green & d3_strong
+        self._merge_indicator(is_morning_star.astype(int), 'candle_morning_star')
+        
+        return self.df
+
+    def calculate_smc_indicators(self) -> pd.DataFrame:
+        """
+        計算 Smart Money Concepts (SMC) 指標
+        由於 SMC 邏輯涉及序列性結構判斷，採用分組處理
+        """
+        logger.info("計算 SMC 指標 (Grouped processing)...")
+        
+        # 定義每檔股票的處理函數
+        def process_group(group_df):
+            # 確保按照時間排序
+            group_df = group_df.sort_values('date')
+            return calculate_smc(group_df)
+            
+        # 分組應用 SMC 計算
+        # 注意: 這裡會回傳包含新欄位的長表格
+        self.df = self.df.groupby('stock_id', group_keys=False).apply(process_group)
+        
+        return self.df
+
     def calculate_all_indicators(self) -> pd.DataFrame:
         """一次計算所有技術指標"""
         logger.info("開始計算所有技術指標 (Vectorized)...")
@@ -453,6 +573,8 @@ class TechnicalIndicators:
         self.calculate_bias_ratio()
         self.calculate_revenue_factors()
         self.calculate_institutional_indicators()
+        self.calculate_candlestick_patterns() 
+        self.calculate_smc_indicators() # 加入 SMC 指標
         
         # 計算二元事件
         self.calculate_binary_events()

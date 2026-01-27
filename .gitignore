@@ -49,3 +49,7 @@ artifacts/*
 # MLflow
 mlruns/
 mlflow.db
+
+# Models
+models/*.pkl
+models/backup/
