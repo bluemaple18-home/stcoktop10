@@ -8,11 +8,12 @@
 
 
 1. [Agent 溝通語言規範](#agent-溝通語言規範)
-2. [版本命名規則](#版本命名規則)
-3. [Git 工作流程](#git-工作流程)
-4. [測試與驗證](#測試與驗證)
-5. [程式碼風格](#程式碼風格)
-6. [文件撰寫](#文件撰寫)
+2. [全域技能中心 (Agent Skills Hub)](#全域技能中心-agent-skills-hub)
+3. [版本命名規則](#版本命名規則)
+4. [Git 工作流程](#git-工作流程)
+5. [測試與驗證](#測試與驗證)
+6. [程式碼風格](#程式碼風格)
+7. [文件撰寫](#文件撰寫)
 
 ---
 
@@ -22,6 +23,18 @@
 - **確認訊息**：所有需要用戶確認 (Confirm) 的訊息，一律使用**繁體中文**。
 - **過程描述**：系統執行階段的描述 (What I am doing / TaskStatus)，若能顯示給用戶，一律使用**繁體中文**。
 - **思考過程**：Agent 內部的思考過程 (Thinking Process) 預設使用繁體中文。
+
+---
+
+## 全域技能中心 (Agent Skills Hub)
+
+本專案調用位於 `/Users/mattkuo/Projects/agent-skills-hub` 的全域技能中心。
+
+### 使用規範
+- **自發評估 (Self-Evaluation)**：開發時應根據 `/Users/mattkuo/Projects/agent-skills-hub/GLOBAL_RULES.md` 中的判定邏輯，自動選擇並套用對應技能。
+- **優先調用**：開發新功能或需要特定工具（如 MCP, DeepEval）時，應先檢查技能中心是否已有對應技能。
+- **技能同步**：若在專案中開發了具備通用價值的技能，應將其同步至技能中心，而非僅保留在專案內。
+- **路徑參考**：`/Users/mattkuo/Projects/agent-skills-hub/skills/`
 
 ---
 
